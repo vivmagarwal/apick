@@ -1,0 +1,27 @@
+// APIck — API Construction Kit. Pure-headless, AI-first application platform.
+
+// app
+export { createApp, type ApickApp, type ApickConfig, type UserJobHandler } from './app/createApp.js';
+export type { AppCore } from './app/core.js';
+
+// schema DSL
+export { f, type Field, type FieldDef, type InferShape } from './schema/fields.js';
+export { defineCollection, type Collection, type CollectionOptions, type InferDoc } from './schema/collection.js';
+
+// saved queries
+export { defineQuery, type SavedQuery, type SavedQueryParam } from './query/saved.js';
+
+// webhooks (consumer-side verification helper)
+export { verifyWebhookSignature } from './webhooks/index.js';
+
+// kernel building blocks (for extensions & advanced use)
+export { uuidv7 } from './kernel/ids.js';
+export { ApickError, errors, type ErrorCode } from './kernel/errors.js';
+export { sql, SqlFragment } from './kernel/sql.js';
+export { openDb, type Db, type Queryable, type DatabaseConfig } from './kernel/db.js';
+export { migrate, migrationStatus } from './kernel/migrate.js';
+export { createLogger, silentLogger, type Logger, type LogLevel } from './kernel/log.js';
+export type { CronDefinition } from './kernel/cron.js';
+export type { EnqueueJobInput, JobRow } from './kernel/jobs.js';
+export type { PermissionRule, AccessContext, TenantRow } from './auth/rbac.js';
+export { VERSION } from './version.js';

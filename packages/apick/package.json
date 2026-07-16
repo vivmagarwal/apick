@@ -1,0 +1,40 @@
+{
+  "name": "apick",
+  "version": "0.1.0",
+  "description": "APIck — API Construction Kit. Pure-headless, AI-first application platform: content types, RBAC, REST, webhooks, MCP, durable jobs on Postgres.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "default": "./dist/mcp/index.js"
+    }
+  },
+  "bin": {
+    "apick": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.3.0",
+    "@modelcontextprotocol/sdk": "^1.15.0",
+    "@sinclair/typebox": "^0.34.0",
+    "hono": "^4.8.0",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.0"
+  }
+}

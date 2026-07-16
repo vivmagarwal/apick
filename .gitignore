@@ -1,0 +1,22 @@
+# local-only reference corpus & notes
+_strapi_reference/
+my-thoughts.md
+.playwright-mcp/
+
+# secrets & env
+.env
+.env.*
+!.env.example
+
+# deps & build output
+node_modules/
+dist/
+*.tsbuildinfo
+
+# runtime data
+*.pgdata/
+.apick-data/
+coverage/
+
+# os
+.DS_Store
