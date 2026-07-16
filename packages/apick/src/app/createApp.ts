@@ -8,6 +8,8 @@ import { enqueueJob, JobRunner, type EnqueueJobInput, type JobRow } from '../ker
 import { createLogger, silentLogger, type Logger, type LogLevel } from '../kernel/log.js';
 import { migrate, migrationStatus } from '../kernel/migrate.js';
 import { sql } from '../kernel/sql.js';
+import { sweepScheduledPublishes } from '../content/store.js';
+import { fanoutEvent } from '../webhooks/index.js';
 import type { RoleDefinition, TenantRow, VerifyTokenHook } from '../auth/rbac.js';
 import {
   createRetentionHandler,
@@ -277,6 +279,21 @@ export async function createApp(config: ApickConfig = {}): Promise<ApickApp> {
   }
   const cronDefs = [...(config.crons ?? [])];
   if (retentionEnabled(retention)) cronDefs.push(retentionCronDef(retention));
+  // Scheduled publishing: sweep due schedules once a minute, cluster-single-fire.
+  const SCHEDULED_PUBLISH_QUEUE = 'apick.scheduled-publish';
+  jobs.register(SCHEDULED_PUBLISH_QUEUE, async () => {
+    const n = await sweepScheduledPublishes(
+      db,
+      (key) => (registry.has(key) ? registry.get(key).compiled : null),
+      (tenantId) => ({
+        tenantId,
+        actor: { principalId: null, via: 'system' },
+        onEvent: (tx, event) => fanoutEvent(tx, event, core.config.webhooks.retry),
+      }),
+    );
+    if (n > 0) log.info('published scheduled documents', { published: n });
+  });
+  cronDefs.push({ key: 'apick-scheduled-publish', schedule: '* * * * *', queue: SCHEDULED_PUBLISH_QUEUE, tenantId: null });
   const crons = new CronScheduler(db, cronDefs, {
     ...(config.tickIntervalMs !== undefined ? { tickIntervalMs: config.tickIntervalMs } : {}),
     logger: log,
@@ -306,9 +323,14 @@ export async function createApp(config: ApickConfig = {}): Promise<ApickApp> {
     defaultTenant: boot.defaultTenant,
     enqueue: (input) => enqueueJob(db, input),
     listen: async (port, hostname) => {
+      // PaaS ergonomics: with no explicit args, honor the platform's PORT env —
+      // and since an injected PORT is the "running on a PaaS" signal, bind
+      // 0.0.0.0 there (HOST overrides either way). Explicit args always win.
+      const envPort = port === undefined && process.env['PORT'] ? Number.parseInt(process.env['PORT'], 10) : undefined;
+      const envHost = hostname ?? process.env['HOST'] ?? (envPort !== undefined ? '0.0.0.0' : undefined);
       const started = await serve((req) => hono.fetch(req), {
-        ...(port !== undefined ? { port } : {}),
-        ...(hostname !== undefined ? { hostname } : {}),
+        ...(port !== undefined ? { port } : envPort !== undefined ? { port: envPort } : {}),
+        ...(envHost !== undefined ? { hostname: envHost } : {}),
       });
       server = started.server;
       log.info('apick listening', { url: started.url });

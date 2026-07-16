@@ -5,7 +5,10 @@ import { pathToFileURL } from 'node:url';
 import { openDb } from '../kernel/db.js';
 import { migrate, migrationStatus } from '../kernel/migrate.js';
 import { Registry } from '../content/registry.js';
+import { randomBytes } from 'node:crypto';
 import { createLogger } from '../kernel/log.js';
+import { sql } from '../kernel/sql.js';
+import { createApiKey, hashToken } from '../auth/rbac.js';
 import type { Collection } from '../schema/collection.js';
 import { VERSION } from '../version.js';
 
@@ -27,8 +30,20 @@ Usage:
   apick migrate [--database url] [--app ./app.js]
                                    Apply apick schema migrations (+ field indexes with --app)
   apick status [--database url]    Show migration status
+  apick key list [--database url]  List active API keys (never token values)
+  apick key rotate-root [--database url]
+                                   Mint a new root key, revoke the old ones —
+                                   the "lost root key" recovery path
+  apick content push <dir> --app ./app.js [--database url] [--schema name]
+                                   Upsert content files into collections
+                                   (<dir>/<collection>/*.md + <collection>.json)
+  apick content pull <dir> --app ./app.js [--database url] [--schema name]
+                                   Export collection content back to files
+  apick content check <dir> --app ./app.js
+                                   Validate content files (no writes, exit 1 on problems)
 
 Database resolution: --database > APICK_DATABASE_URL > DATABASE_URL > pglite://./.apick-data
+(all db commands also honor --schema / APICK_DATABASE_SCHEMA)
 `;
 
 function arg(args: string[], name: string): string | undefined {
@@ -135,6 +150,62 @@ async function main(): Promise<void> {
       const status = await migrationStatus(db);
       console.log(JSON.stringify(status, null, 2));
       await db.close();
+      return;
+    }
+
+    case 'key': {
+      const sub = args[0];
+      const url = arg(args, '--database');
+      const schema = arg(args, '--schema');
+      const db = await openDb({ ...(url !== undefined ? { url } : {}), ...(schema !== undefined ? { schema } : {}) });
+      try {
+        if (sub === 'list') {
+          const { rows } = await db.query<{ id: string; label: string; created_at: Date; last_used_at: Date | null; expires_at: Date | null; principal: string }>(sql`
+            select k.id, k.label, k.created_at, k.last_used_at, k.expires_at, p.name as principal
+            from apick_api_keys k join apick_principals p on p.id = k.principal_id
+            where k.revoked_at is null order by k.created_at
+          `);
+          console.log(JSON.stringify(rows.map((r) => ({
+            id: r.id, label: r.label, principal: r.principal,
+            createdAt: r.created_at, lastUsedAt: r.last_used_at, expiresAt: r.expires_at,
+          })), null, 2));
+          return;
+        }
+        if (sub === 'rotate-root') {
+          // mint a new root key, revoke every other root key — recoverable even
+          // when the old key is lost (direct-DB, like `apick migrate`)
+          const { rows: roots } = await db.query<{ id: string }>(sql`
+            select id from apick_principals where kind = 'service' and name = '__root'
+          `);
+          const rootId = roots[0]?.id;
+          if (!rootId) {
+            console.error('No root principal found — has this database been bootstrapped (run the app once)?');
+            process.exitCode = 1;
+            return;
+          }
+          const token = `apick_root_${randomBytes(24).toString('base64url')}`;
+          await createApiKey(db, { principalId: rootId, label: 'root (rotated via cli)', token });
+          const { rows: revoked } = await db.query<{ id: string }>(sql`
+            update apick_api_keys set revoked_at = now()
+            where principal_id = ${rootId} and revoked_at is null and token_hash != ${hashToken(token)}
+            returning id
+          `);
+          console.log('New root key (shown once — save it):');
+          console.log(`  ${token}`);
+          console.log(`Revoked ${revoked.length} previous root key(s).`);
+          return;
+        }
+        console.error('Usage: apick key <list|rotate-root> [--database <url>] [--schema <name>]');
+        process.exitCode = 1;
+        return;
+      } finally {
+        await db.close();
+      }
+    }
+
+    case 'content': {
+      const { contentCommand } = await import('./content.js');
+      await contentCommand(args);
       return;
     }
 

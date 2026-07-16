@@ -33,7 +33,10 @@ await app.listen(3000);
 `f.object({...})` `f.list(f.text())` `f.relation('other')` `f.relations('other')`
 `f.blocks({ variantName: { ...fields } })`
 
-Options (per field): `required`, `unique` (works in nested objects), `private`
+Collection options: `access.publicRead`, `renamedFields`, and `admin` hints
+(`label`, `icon`, `titleField`, `orderField`) that drive schema-driven UIs —
+introspection also returns `referencedBy` (who points at this collection).
+Field options (per field): `required`, `unique` (works in nested objects), `private`
 (write-only — never readable/filterable/sortable/populatable via ANY API),
 `indexed` (opt-in index at migrate time), `immutable`, `default`, `description`,
 `minLength`/`maxLength`/`pattern` (text), `min`/`max` (numbers).
@@ -70,6 +73,8 @@ POST   /v1/collections/:c/docs/:id/publish  |  /unpublish
 GET    /v1/collections/:c/docs/:id/versions | /versions/:n | POST /versions/:n/restore
 GET    /v1/collections                  (introspection)   GET /v1/collections/:c/schema
 GET    /v1/queries  |  GET /v1/queries/:key?param=…        (saved queries)
+GET    /v1/search?q=…&collections=a,b   ranked FTS across collections (websearch syntax)
+POST   …/docs/:id/publish {"at":"<iso>"}  schedules; DELETE …/publish-schedule cancels
 system (permission-gated): /v1/tenants /v1/keys /v1/roles /v1/grants /v1/principals
        /v1/webhooks /v1/webhooks/:id/deliveries /v1/deliveries/:id/replay
        /v1/events /v1/jobs /v1/export /v1/import
@@ -104,7 +109,7 @@ own IdP with `createApp({ auth: { verifyToken } })`.
 ## MCP (agents)
 
 `POST /mcp` (stateless streamable HTTP, same bearer key). Tools:
-`list_collections` (call first), `list_documents`, `get_document`,
+`list_collections` (call first), `search_content`, `list_documents`, `get_document`,
 `create_document`, `update_document`, `delete_document`, `publish_document`,
 `unpublish_document`, `list_versions`, `get_version`, `restore_version`, and one
 `query_<key>` per saved query. Least-privilege via the key; every mutation

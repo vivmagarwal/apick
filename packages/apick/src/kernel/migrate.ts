@@ -240,6 +240,15 @@ const MIGRATIONS: Migration[] = [
       `create index apick_blobs_tenant on apick_blobs (tenant_id, created_at)`,
     ],
   },
+  {
+    version: 4,
+    name: 'scheduled-publish',
+    statements: [
+      `alter table apick_docs add column scheduled_publish_at timestamptz`,
+      // partial index: the sweep only ever looks at pending schedules
+      `create index apick_docs_scheduled_idx on apick_docs (scheduled_publish_at) where scheduled_publish_at is not null`,
+    ],
+  },
 ];
 
 /** Advisory-lock key per schema (FNV-1a), constant for the default search_path. */

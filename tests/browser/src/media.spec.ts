@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { bootCms, seedAdmin, loginViaUi, ADMIN, type RunningCms } from './fixtures.js';
+import { bootCms, mainNav, seedAdmin, loginViaUi, typeMarkdown, ADMIN, type RunningCms } from './fixtures.js';
 
 /**
  * BROWSER PROMISE: the media library — upload through the UI, pick an image
@@ -22,9 +22,9 @@ test.describe('media library', () => {
     await cms.stop();
   });
 
-  test('upload via the Media page, then delete', async ({ page }) => {
+  test('upload via the Media page, then delete from the detail sheet', async ({ page }) => {
     await loginViaUi(page, cms.url, ADMIN.email, ADMIN.password);
-    await page.locator('[data-nav=media]').click();
+    await mainNav(page).getByRole('link', { name: 'Media' }).click();
     await expect(page.locator('[data-view=media]')).toBeVisible();
 
     await page.locator('[data-input="media-file"]').setInputFiles({ name: 'pixel.png', mimeType: 'image/png', buffer: PNG_1x1 });
@@ -38,10 +38,12 @@ test.describe('media library', () => {
     expect(res.headers.get('content-type')).toBe('image/png');
     expect(res.headers.get('x-content-type-options')).toBe('nosniff');
 
-    // delete removes it
-    await tile.hover();
+    // the tile opens a detail sheet; delete (with confirm) removes it
+    await tile.click();
+    await expect(page.locator('[data-view=media-detail]')).toBeVisible();
     page.once('dialog', (d) => d.accept());
-    await tile.locator('[data-action=delete-media]').click();
+    await page.locator('[data-action=delete-media]').click();
+    await expect(page.locator('[data-view=media-detail]')).toHaveCount(0);
     await expect(page.locator('[data-media="pixel.png"]')).toHaveCount(0);
   });
 
@@ -51,22 +53,27 @@ test.describe('media library', () => {
     await page.locator('[data-input=title]').fill('Post with cover');
     await page.locator('[data-input=slug]').fill('with-cover');
     // body is required
-    await page.locator('[data-markdown=body] [contenteditable="true"]').click();
-    await page.locator('[data-markdown=body] [contenteditable="true"]').pressSequentially('Body text.');
+    await typeMarkdown(page, 'body', 'Body text.');
 
-    // open the media picker on the cover image field, upload from within it, pick it
-    await page.locator('[data-input="coverImageUrl"] [data-action="pick-media"]').click();
+    // open the media picker on the cover image field and upload from within it;
+    // a single upload from inside the picker is picked automatically
+    await page.locator('[data-field=coverImageUrl] [data-action=pick-media]').click();
     await expect(page.locator('[data-view=media-picker]')).toBeVisible();
     await page.locator('[data-view=media-picker] [data-input="media-file"]').setInputFiles({
       name: 'cover.png',
       mimeType: 'image/png',
       buffer: PNG_1x1,
     });
-    await page.locator('[data-view=media-picker] [data-media="cover.png"]').click();
     // picker closes; the field now has a /media/ URL and a preview
     await expect(page.locator('[data-view=media-picker]')).toHaveCount(0);
     await expect(page.locator('[data-input="coverImageUrl.url"]')).toHaveValue(/^\/media\//);
-    await expect(page.locator('[data-input="coverImageUrl"] .image-preview img')).toBeVisible();
+    await expect(page.locator('[data-field=coverImageUrl] img')).toBeVisible();
+
+    // picking an EXISTING file by clicking its tile also works
+    await page.locator('[data-field=coverImageUrl] [data-action=pick-media]').click();
+    await page.locator('[data-view=media-picker] [data-media="cover.png"]').click();
+    await expect(page.locator('[data-view=media-picker]')).toHaveCount(0);
+    await expect(page.locator('[data-input="coverImageUrl.url"]')).toHaveValue(/^\/media\//);
 
     await page.locator('[data-action=publish]').click();
     await expect(page.locator('[data-status=published]')).toBeVisible();

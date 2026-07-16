@@ -81,6 +81,7 @@ https://github.com/vivmagarwal/apick — plus every running app self-documents a
 npx --package=@apick/core apick init my-app      # runnable hello world
 npx apick migrate --database postgres://…   [--app ./schema.js]
 npx apick status
+npx apick content push|pull|check ./content --app ./schema.js   # content as files (md + json)
 ```
 
 MIT.

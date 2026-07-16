@@ -1,6 +1,6 @@
 # APIck — complete framework guide (generated from docs/guides)
 
-> @apick/core v0.7.0 · @apick/cms v0.2.5
+> @apick/core v0.8.0 · @apick/cms v0.3.0
 
 This file is GENERATED from docs/guides by scripts/build-llms.mjs — do not edit by hand.
 It is deterministic, version-stamped, and regenerated on every build (`pnpm llms`).
@@ -202,7 +202,10 @@ await app.listen(3000);
 `f.object({...})` `f.list(f.text())` `f.relation('other')` `f.relations('other')`
 `f.blocks({ variantName: { ...fields } })`
 
-Options (per field): `required`, `unique` (works in nested objects), `private`
+Collection options: `access.publicRead`, `renamedFields`, and `admin` hints
+(`label`, `icon`, `titleField`, `orderField`) that drive schema-driven UIs —
+introspection also returns `referencedBy` (who points at this collection).
+Field options (per field): `required`, `unique` (works in nested objects), `private`
 (write-only — never readable/filterable/sortable/populatable via ANY API),
 `indexed` (opt-in index at migrate time), `immutable`, `default`, `description`,
 `minLength`/`maxLength`/`pattern` (text), `min`/`max` (numbers).
@@ -239,6 +242,8 @@ POST   /v1/collections/:c/docs/:id/publish  |  /unpublish
 GET    /v1/collections/:c/docs/:id/versions | /versions/:n | POST /versions/:n/restore
 GET    /v1/collections                  (introspection)   GET /v1/collections/:c/schema
 GET    /v1/queries  |  GET /v1/queries/:key?param=…        (saved queries)
+GET    /v1/search?q=…&collections=a,b   ranked FTS across collections (websearch syntax)
+POST   …/docs/:id/publish {"at":"<iso>"}  schedules; DELETE …/publish-schedule cancels
 system (permission-gated): /v1/tenants /v1/keys /v1/roles /v1/grants /v1/principals
        /v1/webhooks /v1/webhooks/:id/deliveries /v1/deliveries/:id/replay
        /v1/events /v1/jobs /v1/export /v1/import
@@ -273,7 +278,7 @@ own IdP with `createApp({ auth: { verifyToken } })`.
 ## MCP (agents)
 
 `POST /mcp` (stateless streamable HTTP, same bearer key). Tools:
-`list_collections` (call first), `list_documents`, `get_document`,
+`list_collections` (call first), `search_content`, `list_documents`, `get_document`,
 `create_document`, `update_document`, `delete_document`, `publish_document`,
 `unpublish_document`, `list_versions`, `get_version`, `restore_version`, and one
 `query_<key>` per saved query. Least-privilege via the key; every mutation
@@ -443,20 +448,30 @@ await app.listen(3000);
 
 - **Content model**: `pages` (block-composed, `showInNav`) and `posts`
   (markdown blog). Disable with `defaultContent: false`.
-- **Admin UI** at `/admin`: dashboard, listings with search/status/pagination,
-  a schema-driven editor for every field type (text/markdown/number/boolean/
-  datetime/enum/json/objects/lists/relations/**blocks with reordering**),
-  draft→publish workflow with `draft/modified/published` states, version
-  history with restore, users, API keys, webhooks. Markdown fields use the
-  **edodo-write** Notion/Medium-style WYSIWYG editor (Markdown stays the value);
-  the title auto-fills the slug; drafts **autosave**.
+- **Admin UI** at `/admin` (React + Tailwind, shadcn-style; ships pre-bundled):
+  dashboard, listings with **full-text search**, status filters, sortable
+  columns and **bulk publish/unpublish/delete**; a schema-driven editor for
+  every field type (text/markdown/number/boolean/datetime/enum/json/objects/
+  lists/relations/**blocks with reordering**); **relation pickers** with live
+  search and create-in-place; **related-content panels** that list everything
+  pointing at the open document (reorder by drag, edit in a drawer, unlink,
+  add prefilled — driven by the schema's `referencedBy`); draft→publish with
+  **Schedule…** (publish at a future time) and draft **Preview** on the real
+  site; version history with restore; a **⌘K command palette** (jump to any
+  collection, search all content); a read-only **schema inspector**; users,
+  API keys, webhooks. Markdown fields use the **edodo-write**
+  Notion/Medium-style WYSIWYG editor (Markdown stays the value); the title
+  auto-fills the slug; drafts **autosave**. Name your collections for humans
+  with `admin` hints: `defineCollection('tips', { admin: { label: 'Chef
+  tips', icon: '💡', titleField: 'tip', orderField: 'order' }, … })`.
 - **Media library** at `/admin/media`: drag-and-drop / click upload, a browse
   grid, and a picker built into every image field. Files serve from
   `/media/:id/:filename` with hardened headers, and each upload is an ordinary
   `media` document (so listings, permissions, webhooks and MCP all apply).
-- **Site** at `/`: server-rendered by the theme — home, `/blog`,
-  `/blog/:slug`, `/:page-slug`, nav from pages, themed 404, dark-mode aware,
-  zero client JS.
+- **Site** at `/`: server-rendered by the built-in **"barebones"** theme —
+  minimal opinionated black & white (zinc + Inter + hairlines, dark-mode
+  aware, zero client JS): home, `/blog`, `/blog/:slug`, `/:page-slug`, nav
+  from pages, themed 404. A clean sheet meant to be extended or replaced.
 
 ## Project layout (the "yours vs not yours" rule)
 
@@ -499,6 +514,25 @@ export const recipes = defineCollection('recipes', {
   API principal; every action is attributed in the audit log.
 - Agents get scoped API keys from Settings → API keys (e.g. the `cms-editor`
   role) and drive the same content through MCP.
+
+## Draft preview
+
+Editors preview drafts on the REAL site before publishing: the admin's
+Preview button mints a 30-minute signed URL (`/preview?token=…`) that renders
+that one document's draft through your theme — default or fully custom routes,
+zero theme changes needed. Map documents to pages with:
+
+```js
+await createCms({
+  preview: {
+    pathFor: (collection, doc) =>
+      collection === 'recipes' ? `/recipes/${doc.data.slug}` : null,
+  },
+});
+```
+
+(`pages` and `posts` are mapped out of the box.) The token authorizes exactly
+one document; previews carry `noindex` and a visible draft banner.
 
 ## Theming
 
@@ -569,6 +603,16 @@ Use `f.image()` for URL fields that should show a media picker + preview
 (`coverImageUrl: f.image()`); it accepts app-relative `/media/…` URLs or any
 absolute URL. Public serving is hardened: `X-Content-Type-Options: nosniff`,
 a `sandbox` CSP, `inline` disposition, long-lived immutable caching + ETags.
+
+**Image width variants**: append `?w=320|480|960|1600` (allow-list only —
+any other value is a 400, as is `?w=` on a non-image) to a `/media/…` URL to
+get a resized copy: same format, never upscaled, derived once with
+[sharp](https://sharp.pixelplumbing.com) and stored back in the blob store,
+with the same hardened + immutable-cache headers (the URL is the cache key).
+sharp is an *optional* peer dependency — without it (and for GIFs, whose
+animation frames resizing would flatten) the original bytes serve instead
+with an `x-apick-variant: unavailable` (or `passthrough`) header, never a 500.
+Install it with `npm i sharp` to enable variants.
 
 ## The markdown editor
 
@@ -768,6 +812,22 @@ includes lists nested in objects (`{"meta.keywords":{"$contains":"x"}}`).
 `json`, `blocks`, `object` fields and lists of objects are not filterable as a
 whole; scalar lists accept only `$contains` and `$null`.
 System sorts: `createdAt`, `updatedAt`, `publishedAt`, `docId`.
+
+## Full-text search
+
+Ranked search rides the same planner (authorization, tenancy, bounded reads):
+
+```
+GET /v1/collections/articles/docs?search=sovereign statehood    # one collection
+GET /v1/search?q=sovereignty&collections=articles,cases         # across collections
+```
+
+- Postgres `websearch_to_tsquery` syntax: quoted "phrases", OR, -exclusions.
+- Searches every non-private top-level text/markdown field the caller may read;
+  results rank by `ts_rank` (explicit `sort` overrides).
+- Anonymous callers search published heads of `publicRead` collections only;
+  `status=draft` needs readDraft. Collections with no searchable fields are
+  skipped. MCP exposes the same as the `search_content` tool.
 
 ## The planner is the security boundary
 
@@ -1374,6 +1434,12 @@ hook and it scopes everything.
 
 - Set `rootKey` from your secret manager for reproducible installs (otherwise
   it's generated and printed once on first boot).
+- **Lost or leaked root key**: `apick key rotate-root --database $URL` mints a
+  new one and revokes the old (direct-DB, works without any valid key);
+  `apick key list` shows active keys (labels + timestamps, never tokens).
+- **PaaS note**: `app.listen()` with no arguments honors an injected `PORT`
+  env and binds `0.0.0.0` when it does (HOST overrides; explicit args win) —
+  DigitalOcean/Railway/Fly/Render work with zero configuration.
 - API keys are stored hashed (SHA-256); webhook secrets are stored to sign
   payloads. Use scoped keys with `expiresAt` for CI and agents.
 
@@ -1431,7 +1497,7 @@ version history only if you opt in. See [jobs-cron.md](jobs-cron.md#retention-bu
 # Data portability
 
 No lock-in is a behavioural guarantee, tested end-to-end
-(`portability.test.ts`).
+(`portability.test.ts`, `content-cli.test.ts`).
 
 ## Export / import
 
@@ -1464,6 +1530,39 @@ from apick_docs where collection = 'articles';
 
 `pg_dump` is always a complete, restorable backup. Nothing is encoded in
 proprietary blobs; deleting APIck leaves you with clean relational data.
+
+## Content as files (`apick content`)
+
+Keep authored content in git as markdown + json and sync it with the CLI:
+
+```bash
+npx apick content push  ./content --app ./schema.js [--database url] [--schema name]
+npx apick content pull  ./content --app ./schema.js [--database url] [--schema name]
+npx apick content check ./content --app ./schema.js        # validate only, exit 1 on problems
+```
+
+Layout inside the directory (`--app` is a module exporting `collections`):
+
+- `<collection-key>/*.md` — frontmatter (a strict YAML subset: `key: value`
+  scalars and `- item` string lists) holds the fields; the markdown body fills
+  the collection's first `f.markdown()` field.
+- `<collection-key>.json` — an array of data objects, for collections without
+  a markdown field.
+
+Semantics, all covered by `content-cli.test.ts`:
+
+- **Upsert identity** is the collection's first `unique: true` field — a
+  collection needs one to take part.
+- **Idempotent**: unchanged documents are untouched; a changed file becomes a
+  new draft version (+ re-publish if published). `publish: false` in
+  frontmatter keeps a doc as draft; documents are **never auto-unpublished** —
+  an admin's unpublish decision beats the files.
+- **Relations by human key**: a relation value that isn't a UUID is resolved
+  through the target collection's unique field (`author: Ada`), in two passes
+  so in-directory references work regardless of file order.
+- **Round-trip stable**: `pull` writes the same conventions back (sorted
+  frontmatter keys, relations as human keys), so `pull` → `push` reports
+  everything unchanged.
 
 
 ---

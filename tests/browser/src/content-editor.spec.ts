@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { bootCms, seedAdmin, loginViaUi, typeMarkdown, ADMIN, type RunningCms } from './fixtures.js';
+import { addBlock, bootCms, dragTo, mainNav, seedAdmin, loginViaUi, typeMarkdown, ADMIN, type RunningCms } from './fixtures.js';
 
 /**
  * BROWSER PROMISE: the schema-driven editor — a human writes, publishes,
@@ -21,7 +21,7 @@ test.describe('content editing end-to-end', () => {
     await loginViaUi(page, cms.url, ADMIN.email, ADMIN.password);
 
     // create a post through the generated form
-    await page.locator('[data-nav=posts]').click();
+    await mainNav(page).getByRole('link', { name: 'posts' }).click();
     await page.locator('[data-action=new]').click();
     await page.locator('[data-input=title]').fill('Hello from the browser');
     // slug auto-generates from the title until manually edited
@@ -62,16 +62,18 @@ test.describe('content editing end-to-end', () => {
     const updated = await (await fetch(`${cms.url}/blog/hello-browser`)).text();
     expect(updated).toContain('Hello v2');
 
-    // history: restore v1 (the original title) as a new draft version
+    // history (in the ⋯ menu): restore v1 (the original title) as a new draft version
+    await page.locator('[data-action=more]').click();
     await page.locator('[data-action=versions]').click();
     await page.waitForSelector('[data-view=versions]');
     await page.locator('[data-restore="1"]').click();
-    await expect(page.locator('[data-notice]')).toContainText('Restored v1');
+    await expect(page.getByText('Restored v1 as a new draft version').first()).toBeVisible();
     await expect(page.locator('[data-input=title]')).toHaveValue('Hello from the browser');
 
     // unpublish → gone from the site with a themed 404
     await page.locator('[data-action=publish]').click(); // publish restored draft
     await expect(page.locator('[data-status=published]')).toBeVisible();
+    await page.locator('[data-action=more]').click();
     await page.locator('[data-action=unpublish]').click();
     await expect(page.locator('[data-status=draft]')).toBeVisible();
     const gone = await fetch(`${cms.url}/blog/hello-browser`);
@@ -81,23 +83,23 @@ test.describe('content editing end-to-end', () => {
 
   test('blocks editor: compose a page from hero + prose + quote and see it themed', async ({ page }) => {
     await loginViaUi(page, cms.url, ADMIN.email, ADMIN.password);
-    await page.locator('[data-nav=pages]').click();
+    await mainNav(page).getByRole('link', { name: 'pages' }).click();
     await page.locator('[data-action=new]').click();
     await page.locator('[data-input=title]').fill('About');
     await page.locator('[data-input=slug]').fill('about');
-    await page.locator('[data-input=showInNav]').check();
+    await page.locator('[data-input=showInNav]').click(); // Radix switch
 
-    // add a hero block
-    await page.locator('[data-add=body]').selectOption('hero');
+    // add a hero block via the Add block menu
+    await addBlock(page, 'body', 'hero');
     await page.locator('[data-input="body.0.heading"]').fill('We build in the open');
     await page.locator('[data-input="body.0.subheading"]').fill('An APIck-powered page');
     // add a prose block (markdown via edodo-write)
-    await page.locator('[data-add=body]').selectOption('prose');
+    await addBlock(page, 'body', 'prose');
     await typeMarkdown(page, 'body.1.markdown', 'Our story. It began with an idea.');
-    // add a quote, then move it up above the prose
-    await page.locator('[data-add=body]').selectOption('quote');
+    // add a quote, then drag it up above the prose
+    await addBlock(page, 'body', 'quote');
     await page.locator('[data-input="body.2.text"]').fill('Ship it.');
-    await page.locator('[data-block="body.2"] [title="Move up"]').click();
+    await dragTo(page, '[data-block="body.2"] [title="Drag to reorder"]', '[data-block="body.1"]');
     await expect(page.locator('[data-input="body.1.text"]')).toHaveValue('Ship it.');
 
     await page.locator('[data-action=publish]').click();
@@ -119,8 +121,7 @@ test.describe('content editing end-to-end', () => {
     // missing required title + bad slug
     await page.locator('[data-input=slug]').fill('Bad Slug!');
     await page.locator('[data-action=save]').click();
-    await expect(page.locator('[data-error]')).toBeVisible();
-    await expect(page.locator('[data-field=title] .field-error, [data-field=slug] .field-error').first()).toBeVisible();
+    await expect(page.locator('[data-field-error=title], [data-field-error=slug]').first()).toBeVisible();
   });
 
   test('unique conflicts read as human errors', async ({ page }) => {
@@ -129,6 +130,6 @@ test.describe('content editing end-to-end', () => {
     await page.locator('[data-input=title]').fill('Duplicate about');
     await page.locator('[data-input=slug]').fill('about'); // taken by the blocks test
     await page.locator('[data-action=save]').click();
-    await expect(page.locator('[data-error]')).toContainText('unique');
+    await expect(page.locator('[data-field-error=slug]')).toContainText('unique');
   });
 });

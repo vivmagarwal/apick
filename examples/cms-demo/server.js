@@ -13,10 +13,13 @@ const app = await createCms({
   collections,
   theme,
   plugins,
+  preview: {
+    pathFor: (collection, doc) => (collection === 'recipes' && doc.data.slug ? `/recipes/${doc.data.slug}` : null),
+  },
 });
 
 if (app.rootKey) console.log('Root API key (shown once):', app.rootKey);
-const { url } = await app.listen(3000);
+const { url } = await app.listen(process.env.PORT ? Number(process.env.PORT) : 3000);
 console.log(`
 The Test Kitchen is running:
   Site     ${url}/

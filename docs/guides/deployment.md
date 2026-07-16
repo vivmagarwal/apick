@@ -92,6 +92,12 @@ hook and it scopes everything.
 
 - Set `rootKey` from your secret manager for reproducible installs (otherwise
   it's generated and printed once on first boot).
+- **Lost or leaked root key**: `apick key rotate-root --database $URL` mints a
+  new one and revokes the old (direct-DB, works without any valid key);
+  `apick key list` shows active keys (labels + timestamps, never tokens).
+- **PaaS note**: `app.listen()` with no arguments honors an injected `PORT`
+  env and binds `0.0.0.0` when it does (HOST overrides; explicit args win) —
+  DigitalOcean/Railway/Fly/Render work with zero configuration.
 - API keys are stored hashed (SHA-256); webhook secrets are stored to sign
   payloads. Use scoped keys with `expiresAt` for CI and agents.
 

@@ -1,5 +1,6 @@
 import type { Db } from '../kernel/db.js';
 import { errors } from '../kernel/errors.js';
+import { draftPreviewDocId } from '../kernel/preview.js';
 import { isUuid } from '../kernel/ids.js';
 import { sql, SqlFragment } from '../kernel/sql.js';
 import type { AccessContext } from '../auth/rbac.js';
@@ -38,6 +39,8 @@ export interface ListParams {
   status?: 'draft' | 'published';
   locale?: string;
   populate?: string[];
+  /** Full-text search (websearch syntax) over the collection's text/markdown fields. */
+  search?: string;
   fields?: string[];
   count?: boolean;
 }
@@ -48,9 +51,11 @@ export interface ListResult {
 }
 
 interface PlanContext {
+  /** When set, this doc's DRAFT head impersonates its published head (see kernel/preview). */
+  previewDocId: string | null;
   col: CompiledCollection;
   status: 'draft' | 'published';
-  dataColumn: 'draft_data' | 'published_data';
+  dataColumn: string;
   readable: string[] | null; // null = all non-private
 }
 
@@ -274,12 +279,36 @@ function compileSort(plan: PlanContext, sort: string | undefined): SqlFragment {
 
 function buildPlanContext(ctx: AccessContext, col: CompiledCollection, status: 'draft' | 'published'): PlanContext {
   assertCan(ctx, status === 'draft' ? 'readDraft' : 'read', `doc:${col.key}`);
+  // Draft preview: inside a preview scope, ONE document's draft head stands in
+  // for its published head — data extraction, filters and sorts all see the
+  // draft for that doc, published heads for everything else.
+  const previewDocId = status === 'published' ? draftPreviewDocId() : null;
+  const dataColumn =
+    status === 'draft'
+      ? 'draft_data'
+      : previewDocId
+        ? `(case when doc_id = '${previewDocId}' then draft_data else published_data end)`
+        : 'published_data';
   return {
     col,
     status,
-    dataColumn: status === 'draft' ? 'draft_data' : 'published_data',
+    dataColumn,
+    previewDocId,
     readable: readableFields(ctx, col.key),
   };
+}
+
+/** The published-head condition, widened to include the previewed draft. */
+function headCondition(plan: PlanContext): SqlFragment {
+  if (plan.status !== 'published') return sql.raw('true');
+  if (plan.previewDocId) return sql.raw(`(published_version is not null or doc_id = '${plan.previewDocId}')`);
+  return sql.raw('published_version is not null');
+}
+
+/** Render a row under the plan: the previewed doc renders its draft head. */
+function envelopeFor(plan: PlanContext, col: CompiledCollection, row: DocRow): DocEnvelope {
+  if (plan.previewDocId && row.doc_id === plan.previewDocId) return toEnvelope(col, row, 'draft');
+  return toEnvelope(col, row, plan.status);
 }
 
 function rbacCondition(plan: PlanContext, ctx: AccessContext): SqlFragment {
@@ -391,16 +420,31 @@ export async function listDocs(db: Db, registry: Registry, ctx: AccessContext, c
     sql`tenant_id = ${ctx.tenantId}`,
     sql`collection = ${collectionKey}`,
     sql`locale = ${locale}`,
-    status === 'published' ? sql.raw('published_version is not null') : sql.raw('true'),
+    headCondition(plan),
     rbacCondition(plan, ctx),
   ];
   if (params.filter !== undefined) conds.push(compileFilter(plan, params.filter, state));
+  let searchRank: SqlFragment | null = null;
+  if (params.search !== undefined) {
+    const q = String(params.search).trim().slice(0, 200);
+    if (q.length < 2) throw errors.planRejected('search needs at least 2 characters');
+    const searchable = Object.entries(plan.col.fields)
+      .filter(([, def]) => def.type === 'text' && def.private !== true)
+      .filter(([key]) => plan.readable === null || plan.readable.includes(key))
+      .map(([key]) => key);
+    if (searchable.length === 0) throw errors.planRejected(`Collection "${plan.col.key}" has no searchable fields`);
+    const docText = searchable.map((key) => `coalesce(${plan.dataColumn} ->> '${key}', '')`).join(" || ' ' || ");
+    conds.push(sql`to_tsvector('english', ${sql.raw(docText)}) @@ websearch_to_tsquery('english', ${q})`);
+    searchRank = sql`ts_rank(to_tsvector('english', ${sql.raw(docText)}), websearch_to_tsquery('english', ${q}))`;
+  }
   const where = sql.join(conds, ' and ');
 
+  const order =
+    searchRank !== null && params.sort === undefined ? sql`${searchRank} desc, doc_id asc` : sql`${compileSort(plan, params.sort)}`;
   const { rows } = await db.query<DocRow>(sql`
     select * from apick_docs
     where ${where}
-    order by ${compileSort(plan, params.sort)}
+    order by ${order}
     limit ${pageSize} offset ${(page - 1) * pageSize}
   `);
 
@@ -410,7 +454,7 @@ export async function listDocs(db: Db, registry: Registry, ctx: AccessContext, c
       : null;
 
   const data = rows.map((row) => {
-    const envelope = projectFields(plan, toEnvelope(col, row, status), params.fields);
+    const envelope = projectFields(plan, envelopeFor(plan, col, row), params.fields);
     const pop = populated?.get(row.doc_id);
     return pop && Object.keys(pop).length > 0 ? { ...envelope, populated: pop } : envelope;
   });
@@ -440,7 +484,7 @@ export async function getDoc(
   const { rows } = await db.query<DocRow>(sql`
     select * from apick_docs
     where tenant_id = ${ctx.tenantId} and collection = ${collectionKey} and doc_id = ${docId} and locale = ${locale}
-      and ${status === 'published' ? sql.raw('published_version is not null') : sql.raw('true')}
+      and ${headCondition(plan)}
       and ${rbacCondition(plan, ctx)}
   `);
   const row = rows[0];
@@ -451,7 +495,7 @@ export async function getDoc(
       ? await populateDocs(db, registry, ctx, plan, [row], params.populate, locale)
       : null;
 
-  const envelope = projectFields(plan, toEnvelope(col, row, status), params.fields);
+  const envelope = projectFields(plan, envelopeFor(plan, col, row), params.fields);
   const pop = populated?.get(row.doc_id);
   return pop && Object.keys(pop).length > 0 ? { ...envelope, populated: pop } : envelope;
 }

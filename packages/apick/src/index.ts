@@ -29,4 +29,6 @@ export { createPrincipal, grantRole, createApiKey, revokeApiKey, hashToken, reso
 export { putBlob, getBlob, deleteBlob, type BlobMeta } from './kernel/blobs.js';
 export type { HonoEnv } from './http/app.js';
 export type { RetentionConfig } from './app/retention.js';
+export { runWithDraftPreview, draftPreviewDocId } from './kernel/preview.js';
+export type { AdminHints } from './schema/collection.js';
 export { VERSION } from './version.js';
