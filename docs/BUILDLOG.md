@@ -124,3 +124,15 @@ package whose admin is a pure consumer of core's REST API (dogfood).
 - Export covers heads (draft+published), not version history (portability.md).
 - `private` fields are write-only even for operator-admin over the API; the
   values exist only for server-side code and SQL (auth-rbac.md).
+
+## 2026-07-16 — list membership filtering (core 0.6.0)
+
+First production consumer (glopo.info, built on @apick/cms) needed a filterable
+case-study library: cases carry `themes: f.list(f.enum(...))` and
+`challenges: f.list(f.enum(...))`, and the library filters by membership. The
+planner rejected all list filtering (v1 conservatism), so this release extends
+`$contains`/`$null` — already proven on to-many relations via `jsonb_exists` —
+to lists of text/enum scalars. Same operator, same SQL mechanism, same
+plan-time rejection for everything else (lists of objects stay non-filterable,
+scalar lists stay unsortable). 9 new black-box tests (list-membership.test.ts);
+queries.md + cheatsheet updated in the same change.

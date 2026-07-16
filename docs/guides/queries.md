@@ -23,10 +23,13 @@ GET /v1/collections/articles/docs
 | `$contains` `$icontains` `$startsWith` `$endsWith` | text, enum | LIKE metacharacters are escaped — always literal |
 | `$null` | any filterable | `{"$null": true|false}` |
 | `$contains` | to-many relations | membership: `{"related":{"$contains":"<docId>"}}` |
+| `$contains` | lists of text/enum | membership: `{"tags":{"$contains":"borders"}}` — exact item match, not substring |
 | `$and` `$or` `$not` | combinators | nest freely within the node budget |
 
-Nested object fields use dotted paths: `{"seo.metaTitle": {"$eq": "x"}}`.
-`json`, `list`, `blocks` and `object` fields are not filterable as a whole.
+Nested object fields use dotted paths: `{"seo.metaTitle": {"$eq": "x"}}` — that
+includes lists nested in objects (`{"meta.keywords":{"$contains":"x"}}`).
+`json`, `blocks`, `object` fields and lists of objects are not filterable as a
+whole; scalar lists accept only `$contains` and `$null`.
 System sorts: `createdAt`, `updatedAt`, `publishedAt`, `docId`.
 
 ## The planner is the security boundary

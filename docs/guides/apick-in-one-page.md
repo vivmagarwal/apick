@@ -80,8 +80,10 @@ meta: /health /health/ready /openapi.json /llms.txt /llms-full.txt /mcp
 
 Operators: `$eq $ne $gt $gte $lt $lte $in $nin $contains $icontains $startsWith
 $endsWith $null`. Combinators: `$and $or $not`. Shorthand: `{"title":"x"}` = `$eq`.
-Only fields that exist AND that you may read are accepted — anything else is
-rejected at plan time (private fields are indistinguishable from unknown ones).
+`$contains` on a list of text/enum (or a to-many relation) is exact membership:
+`{"tags":{"$contains":"borders"}}`. Only fields that exist AND that you may read
+are accepted — anything else is rejected at plan time (private fields are
+indistinguishable from unknown ones).
 
 ```
 ?filter={"$or":[{"views":{"$gt":100}},{"title":{"$startsWith":"Hello"}}]}&sort=-views

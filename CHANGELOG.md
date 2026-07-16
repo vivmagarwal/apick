@@ -3,6 +3,20 @@
 All notable changes to the APIck packages. Semver applies pre-1.0 as:
 breaking API changes bump the minor.
 
+## @apick/core 0.6.0 — 2026-07-16
+
+- **Query planner: list membership filtering.** Lists of text/enum scalars now
+  accept `$contains` (exact item match — `{"tags":{"$contains":"borders"}}`)
+  and `$null`, via the same `jsonb_exists` mechanism as to-many relations.
+  Lists of objects, `json`, `object` and `blocks` fields remain non-filterable;
+  scalar lists remain unsortable. Every other operator on a scalar list is
+  still rejected at plan time.
+
+## @apick/cms 0.2.4 — 2026-07-16
+
+- Rebuilt against @apick/core 0.6.0 (list membership filtering — the admin
+  and site inherit it through the API). No CMS code changes.
+
 ## @apick/cms 0.2.3 — unreleased
 
 - Same "APIck in one page" cheatsheet at the top of the llms docs; README links
