@@ -49,6 +49,30 @@ package whose admin is a pure consumer of core's REST API (dogfood).
       (2026-07-16) confirmed the built shape: core = headless soul, cms =
       consumer; his cloned-repo idea became the scaffolder convention.
 
+## P11 — media, editor niceties, edodo-write (done 2026-07-16)
+
+- [x] core 0.5.0: `f.image()`; blob store (migration 003, put/get/deleteBlob);
+      export can/assertCan
+- [x] cms 0.2.0 media library: upload UI (drag-drop + click), browse grid,
+      picker per f.image() field; `/media/:id/:filename` hardened serving
+      (nosniff + sandbox CSP + immutable/ETag); `media` collection; pluggable
+      storage driver (default = core blob store); size + mime limits
+- [x] edodo-write (vivmagarwal/edodo-write, MIT) as the markdown editor:
+      bundled with the admin SPA; images upload to media; **flush registry**
+      (src/admin/ui/flush.ts) pulls each editor's synchronous getMarkdown() at
+      save/autosave/reorder → no keystroke lost across edodo's ~120ms change
+      debounce; also fixed a latent data-loss bug (typing in one block wiping
+      another mid-debounce)
+- [x] editor niceties: slug auto-gen from title (until hand-edited), draft
+      autosave + status indicator, unsaved-changes guard
+- [x] ROOT-CAUSE FIX (not masked with retries): login rate limiter was
+      module-global → multiple createCms in one process rate-limited each other
+      (surfaced as browser-suite flakiness). Now per-instance. Browser harness
+      made deterministic (worker:false, serial, 0 retries).
+- [x] tests: +media.test.ts (blackbox, 5) → 107 total; +media.spec.ts,
+      editor-niceties.spec.ts (browser) → 17 total; screenshot QA updated.
+      Everything green with 0 retries.
+
 ## Promise → black-box test matrix (every wishlist promise gets a failing-if-broken test)
 
 | Promise | Test |
