@@ -3,6 +3,25 @@
 All notable changes to the APIck packages. Semver applies pre-1.0 as:
 breaking API changes bump the minor.
 
+## @apick/core 0.7.0 — 2026-07-16
+
+- **Schema isolation: many APIck apps in one database.** New `databaseSchema`
+  config (also `?schema=…` on the database URL, or `APICK_DATABASE_SCHEMA`)
+  puts ALL apick tables in their own Postgres schema — created automatically,
+  existing tables never touched, several apps per database with zero contact.
+  Startup-parameter based (race-free) with an automatic per-connection
+  fallback for poolers that strip options; transaction-mode poolers are
+  detected and refused at boot with a clear error. Migration advisory locks
+  are keyed per schema so co-hosted apps never serialize each other.
+  On Supabase a non-exposed schema also keeps apick tables unreachable via
+  PostgREST. Scaffolds now suggest a schema; booting against a database with
+  foreign tables and no schema logs a recommendation.
+
+## @apick/cms 0.2.5 — 2026-07-16
+
+- Rebuilt against @apick/core 0.7.0 (schema isolation — `databaseSchema`
+  flows straight through `createCms`). Scaffold suggests a schema.
+
 ## @apick/core 0.6.0 — 2026-07-16
 
 - **Query planner: list membership filtering.** Lists of text/enum scalars now

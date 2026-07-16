@@ -45,7 +45,12 @@ const todos = defineCollection('todos', {
   },
 });
 
-const app = await createApp({ collections: [todos] });
+const app = await createApp({
+  collections: [todos],
+  // Sharing a Postgres with other apps (or other APIck instances)? Give this
+  // app its own schema — created automatically, nothing else is touched:
+  // databaseSchema: 'apick_my_app',
+});
 if (app.rootKey) {
   console.log('Your root API key (shown once, save it):');
   console.log('  ' + app.rootKey);

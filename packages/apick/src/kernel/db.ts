@@ -13,6 +13,8 @@ export interface Queryable {
 
 export interface Db extends Queryable {
   readonly kind: 'pg' | 'pglite';
+  /** The Postgres schema all apick tables live in (null = the default search_path, i.e. public). */
+  readonly schema: string | null;
   /** Multi-statement execution for DDL (migrations only). */
   exec(text: string): Promise<void>;
   transaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T>;
@@ -32,10 +34,12 @@ function rethrow(err: unknown): never {
 
 class PgDb implements Db {
   readonly kind = 'pg' as const;
+  readonly schema: string | null;
   #pool: import('pg').Pool;
 
-  constructor(pool: import('pg').Pool) {
+  constructor(pool: import('pg').Pool, schema: string | null = null) {
     this.#pool = pool;
+    this.schema = schema;
   }
 
   async query<T = Record<string, unknown>>(frag: SqlFragment): Promise<QueryResult<T>> {
@@ -87,12 +91,14 @@ type PgliteInstance = import('@electric-sql/pglite').PGlite;
 
 class PgliteDb implements Db {
   readonly kind = 'pglite' as const;
+  readonly schema: string | null;
   #db: PgliteInstance;
   #onClose: (() => void) | undefined;
 
-  constructor(db: PgliteInstance, onClose?: () => void) {
+  constructor(db: PgliteInstance, onClose?: () => void, schema: string | null = null) {
     this.#db = db;
     this.#onClose = onClose;
+    this.schema = schema;
   }
 
   async query<T = Record<string, unknown>>(frag: SqlFragment): Promise<QueryResult<T>> {
@@ -182,38 +188,110 @@ export interface DatabaseConfig {
    */
   url?: string;
   poolSize?: number;
+  /**
+   * Postgres schema for ALL apick tables (created if missing). This is how
+   * several APIck apps share ONE database — each app in its own schema, fully
+   * isolated, no table-name collisions. Also settable as `?schema=…` on a
+   * postgres URL or via APICK_DATABASE_SCHEMA. On Supabase this doubles as a
+   * safety boundary: a non-exposed schema is never served by PostgREST.
+   * NOTE: requires a direct connection or a SESSION-mode pooler —
+   * transaction-mode poolers share server sessions and cannot hold a
+   * per-connection search_path (openDb verifies and fails fast).
+   */
+  schema?: string;
+}
+
+const SCHEMA_RE = /^[a-z_][a-z0-9_]{0,62}$/;
+
+function resolveSchema(config: DatabaseConfig, urlParam: string | null): string | null {
+  const schema = config.schema ?? urlParam ?? process.env['APICK_DATABASE_SCHEMA'] ?? null;
+  if (schema === null || schema === '') return null;
+  if (!SCHEMA_RE.test(schema)) {
+    throw new ApickError('bad_request', `Invalid database schema "${schema}" (want: ${SCHEMA_RE})`);
+  }
+  return schema;
 }
 
 export async function openDb(config: DatabaseConfig = {}): Promise<Db> {
-  const url = config.url ?? process.env['APICK_DATABASE_URL'] ?? process.env['DATABASE_URL'] ?? 'pglite://./.apick-data';
+  const rawUrl = config.url ?? process.env['APICK_DATABASE_URL'] ?? process.env['DATABASE_URL'] ?? 'pglite://./.apick-data';
 
-  if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+  if (rawUrl.startsWith('postgres://') || rawUrl.startsWith('postgresql://')) {
+    // `?schema=` is apick's, not libpq's — extract and strip before connecting.
+    const parsed = new URL(rawUrl);
+    const urlParam = parsed.searchParams.get('schema');
+    if (urlParam !== null) parsed.searchParams.delete('schema');
+    const schema = resolveSchema(config, urlParam);
+    const url = parsed.toString();
+
     const { default: pg } = await import('pg');
-    const pool = new pg.Pool({ connectionString: url, max: config.poolSize ?? 10 });
+    const pool = new pg.Pool({
+      connectionString: url,
+      max: config.poolSize ?? 10,
+      // Preferred path: the server applies the search_path at connection
+      // startup — race-free and works through session-mode poolers that
+      // forward startup parameters (Supavisor does).
+      ...(schema ? { options: `-c search_path=${schema}` } : {}),
+    });
+    const hasSchema = (searchPath: string): boolean =>
+      searchPath.split(',').some((s) => s.trim().replace(/^"|"$/g, '') === schema);
     // Fail fast with a readable error instead of on first query.
     const client = await pool.connect();
-    client.release();
-    return new PgDb(pool);
+    try {
+      if (schema) {
+        const before = await client.query('show search_path');
+        if (!hasSchema(String(before.rows[0]?.['search_path'] ?? ''))) {
+          // The pooler stripped startup options — SET on every new connection
+          // instead (queries issued inside 'connect' run before any checkout's
+          // queries on that client), then verify a SET actually holds here.
+          pool.on('connect', (c) => {
+            c.query(`set search_path to "${schema}"`).catch(() => {
+              /* a failure surfaces on that connection's next query */
+            });
+          });
+          await client.query(`set search_path to "${schema}"`);
+          const after = await client.query('show search_path');
+          if (!hasSchema(String(after.rows[0]?.['search_path'] ?? ''))) {
+            throw new ApickError(
+              'bad_request',
+              `Could not apply search_path "${schema}". Transaction-mode poolers cannot hold a session ` +
+                `search_path — use a direct connection or a session-mode pooler (e.g. Supavisor on :5432).`,
+            );
+          }
+        }
+        await client.query(`create schema if not exists "${schema}"`);
+      }
+    } finally {
+      client.release();
+    }
+    return new PgDb(pool, schema);
   }
 
-  if (url.startsWith('pglite://')) {
-    const target = url.slice('pglite://'.length);
+  if (rawUrl.startsWith('pglite://')) {
+    const target = rawUrl.slice('pglite://'.length);
+    const schema = resolveSchema(config, null);
     const { PGlite } = await import('@electric-sql/pglite');
+    const withSchema = async (db: PgliteInstance): Promise<void> => {
+      if (!schema) return;
+      // PGlite is a single session — one SET holds for the instance's lifetime.
+      await db.exec(`create schema if not exists "${schema}"; set search_path to "${schema}";`);
+    };
     if (target === 'memory') {
       const db = new PGlite();
       await db.waitReady;
-      return new PgliteDb(db);
+      await withSchema(db);
+      return new PgliteDb(db, undefined, schema);
     }
     const releaseLock = acquirePgliteLock(target);
     try {
       const db = new PGlite(target);
       await db.waitReady;
-      return new PgliteDb(db, releaseLock);
+      await withSchema(db);
+      return new PgliteDb(db, releaseLock, schema);
     } catch (err) {
       releaseLock();
       throw err;
     }
   }
 
-  throw new ApickError('bad_request', `Unsupported database url scheme: ${url.split('://')[0]}://`);
+  throw new ApickError('bad_request', `Unsupported database url scheme: ${rawUrl.split('://')[0]}://`);
 }

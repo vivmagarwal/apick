@@ -48,6 +48,9 @@ const app = await createCms({
   collections,
   theme,
   plugins,
+  // Sharing a Postgres with other apps (or other APIck instances)? Give this
+  // site its own schema — created automatically, nothing else is touched:
+  // databaseSchema: 'apick_my_site',
 });
 
 if (app.rootKey) console.log('Root API key (shown once, save it):', app.rootKey);

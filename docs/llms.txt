@@ -6,7 +6,7 @@
 > documents, signed webhooks, durable jobs/cron, OpenAPI 3.1 and a first-class
 > MCP server. Requires Node >= 22.
 
-Packages: @apick/core v0.6.0 · @apick/cms v0.2.4.
+Packages: @apick/core v0.7.0 · @apick/cms v0.2.5.
 Every running app also serves ITS OWN live docs at /llms.txt, /llms-full.txt and
 /openapi.json — generated from that app's actual schema. This file documents the
 framework itself.

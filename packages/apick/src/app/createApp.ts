@@ -7,6 +7,7 @@ import { CronScheduler, type CronDefinition } from '../kernel/cron.js';
 import { enqueueJob, JobRunner, type EnqueueJobInput, type JobRow } from '../kernel/jobs.js';
 import { createLogger, silentLogger, type Logger, type LogLevel } from '../kernel/log.js';
 import { migrate, migrationStatus } from '../kernel/migrate.js';
+import { sql } from '../kernel/sql.js';
 import type { RoleDefinition, TenantRow, VerifyTokenHook } from '../auth/rbac.js';
 import {
   createRetentionHandler,
@@ -38,6 +39,13 @@ export interface ApickConfig {
    * falling back to `pglite://./.apick-data` (zero-setup hello world).
    */
   database?: string;
+  /**
+   * Postgres schema for all apick tables (created if missing) — how several
+   * APIck apps share one database, each isolated in its own schema. Also
+   * settable as `?schema=…` on the database URL or APICK_DATABASE_SCHEMA.
+   * Needs a direct connection or session-mode pooler (verified at boot).
+   */
+  databaseSchema?: string;
   collections?: Collection[];
   queries?: SavedQuery[];
   crons?: CronDefinition[];
@@ -134,7 +142,27 @@ export async function createApp(config: ApickConfig = {}): Promise<ApickApp> {
   const log =
     config.logger ?? (config.logLevel ? createLogger({ level: config.logLevel }) : createLogger({ level: 'info' }));
 
-  const db = await openDb(config.database !== undefined ? { url: config.database } : {});
+  const db = await openDb({
+    ...(config.database !== undefined ? { url: config.database } : {}),
+    ...(config.databaseSchema !== undefined ? { schema: config.databaseSchema } : {}),
+  });
+
+  // Shared-database guidance: connecting to a Postgres that already holds
+  // other tables without a schema of our own works, but isolation is better —
+  // suggest it (people can ignore or override; nothing existing is touched).
+  if (db.kind === 'pg' && db.schema === null) {
+    const { rows } = await db.query<{ n: string }>(
+      sql`select count(*)::text as n from information_schema.tables
+          where table_schema = current_schema() and table_name not like 'apick_%'`,
+    );
+    if (Number(rows[0]?.n ?? 0) > 0) {
+      log.warn(
+        'this database already contains non-apick tables — consider giving this app its own schema ' +
+          "(databaseSchema: 'apick_myapp', or ?schema= on the URL) so several apps can share the database untangled",
+        { foreignTables: Number(rows[0]!.n) },
+      );
+    }
+  }
 
   // Migration policy: embedded dev DB applies automatically; production
   // Postgres refuses to serve with pending migrations unless opted in.
