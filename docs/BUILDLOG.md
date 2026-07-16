@@ -136,3 +136,18 @@ to lists of text/enum scalars. Same operator, same SQL mechanism, same
 plan-time rejection for everything else (lists of objects stay non-filterable,
 scalar lists stay unsortable). 9 new black-box tests (list-membership.test.ts);
 queries.md + cheatsheet updated in the same change.
+
+## 2026-07-16 — schema isolation (core 0.7.0)
+
+glopo.info deploys into Vivek's shared Supabase project — a database that
+already serves the personal-monorepo apps. Putting apick tables in `public`
+was a non-starter (PostgREST exposes public-schema tables; apick's authz lives
+in its planner, not RLS). New `databaseSchema` config isolates each APIck app
+in its own Postgres schema: created at boot, search_path via startup options
+(verified; per-connection SET fallback for poolers that strip them;
+transaction-mode poolers refused with a clear error), migration advisory lock
+keyed per schema. Validated live against Supabase (Supavisor session pooler,
+:5432): 18 tables in schema, zero in public, then schema dropped clean.
+Scaffolds suggest a schema; boot warns when joining a database with foreign
+tables un-schema'd. Deliberately schemas, NOT table prefixes: zero query
+rewriting, and existing tables can't collide by construction.

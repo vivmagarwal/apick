@@ -12,7 +12,40 @@ APICK_DATABASE_URL=postgres://user:pass@host:5432/db node server.js
 
 Local dev needs nothing: the embedded PGlite database (`pglite://./.apick-data`)
 is real Postgres (v17 WASM) with identical SQL semantics, so dev/prod parity
-holds. `pglite://memory` is ideal for tests.
+holds. `pglite://memory` is ideal for tests. **No Docker anywhere** — PGlite
+gives the SQLite experience (a directory in your project, in-process, zero
+install) without SQLite's dialect drift: it IS Postgres, so what works in dev
+works in prod. APIck deliberately supports exactly one SQL dialect — Strapi's
+multi-dialect support (SQLite/MySQL/Postgres) is a recurring source of its
+subtle bugs, and we refuse the whole class.
+
+## Several apps in one database — schema isolation
+
+One Postgres (or one Supabase project) can host **many APIck apps, plus your
+existing tables, without touching each other**. Give each app its own schema —
+created automatically at boot, everything APIck does stays inside it:
+
+```ts
+await createApp({ databaseSchema: 'apick_my_blog' });   // app 1
+await createApp({ databaseSchema: 'apick_my_shop' });   // app 2 — same DB, zero contact
+```
+
+Equivalently: `APICK_DATABASE_URL=postgres://…/db?schema=apick_my_blog` or the
+`APICK_DATABASE_SCHEMA` env var. Schema names must match `[a-z_][a-z0-9_]*`.
+
+- **Existing databases are safe**: APIck creates and uses only its own schema;
+  tables in `public` (or anywhere else) are never read or written. Booting
+  against a database that has other tables *without* a schema logs a warning
+  suggesting one — it works, but isolation is better.
+- **Supabase note**: a custom schema is also a hard safety boundary — PostgREST
+  serves only the schemas you explicitly expose, so APIck's tables (which rely
+  on APIck's planner, not RLS) are unreachable through the Supabase REST API.
+- **Pooler note**: a per-connection `search_path` needs a **direct connection
+  or a session-mode pooler** (e.g. Supavisor on port 5432). Transaction-mode
+  poolers share server sessions and cannot hold it — APIck verifies at boot
+  and fails fast with a clear error instead of writing to the wrong schema.
+- Migration advisory locks are keyed per schema, so co-hosted apps never
+  serialize each other's deploys.
 
 ## Migrations are explicit — the server never runs DDL at boot
 

@@ -1,6 +1,6 @@
 {
   "name": "@apick/core",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "APIck core — pure-headless, AI-first application platform: content types, RBAC, REST, webhooks, MCP, durable jobs on Postgres.",
   "license": "MIT",
   "type": "module",

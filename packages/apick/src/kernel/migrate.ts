@@ -242,6 +242,16 @@ const MIGRATIONS: Migration[] = [
   },
 ];
 
+/** Advisory-lock key per schema (FNV-1a), constant for the default search_path. */
+function migrateLockKey(schema: string | null): number {
+  if (!schema) return 872194617;
+  let h = 2166136261;
+  for (let i = 0; i < schema.length; i++) {
+    h = Math.imul(h ^ schema.charCodeAt(i), 16777619) >>> 0;
+  }
+  return h | 0; // pg_advisory_xact_lock takes a signed 32/64-bit int
+}
+
 export async function migrate(db: Db): Promise<{ applied: string[] }> {
   await db.exec(`create table if not exists apick_migrations (
     version int primary key,
@@ -253,7 +263,8 @@ export async function migrate(db: Db): Promise<{ applied: string[] }> {
   await db.transaction(async (tx) => {
     if (db.kind === 'pg') {
       // Serialize concurrent migrators across replicas (xact-scoped lock).
-      await tx.query(sql`select pg_advisory_xact_lock(872194617)`);
+      // Keyed by schema so apps sharing one database never contend.
+      await tx.query(sql`select pg_advisory_xact_lock(${migrateLockKey(db.schema)})`);
     }
     const { rows } = await tx.query<{ version: number }>(sql`select version from apick_migrations`);
     const done = new Set(rows.map((r) => r.version));

@@ -121,6 +121,11 @@ audited.
 - **Reads are bounded**; the API can't be coerced into a pathological query.
 - **Multi-tenant + stateless by construction**: N replicas safe, cron fires once
   cluster-wide, webhooks deliver once, no writable filesystem needed.
+- **Many apps, one database**: `databaseSchema: 'apick_myapp'` (or `?schema=`
+  on the URL) isolates each APIck app in its own Postgres schema — existing
+  tables untouched, no collisions, session-mode pooler required.
+- **No Docker, no SQLite dialect drift**: dev runs embedded PGlite (real
+  Postgres in-process, SQLite-like ergonomics); prod is any Postgres ≥ 14.
 - **Webhooks are reliable**: signed, retried, dead-lettered, replayable.
 - **History/audit/rollback are free** (append-only versions + event log).
 
