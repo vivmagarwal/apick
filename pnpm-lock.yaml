@@ -18,6 +18,18 @@ importers:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@24.13.3)
 
+  examples/blog:
+    dependencies:
+      apick:
+        specifier: workspace:*
+        version: link:../../packages/apick
+
+  examples/hello-world:
+    dependencies:
+      apick:
+        specifier: workspace:*
+        version: link:../../packages/apick
+
   packages/apick:
     dependencies:
       '@electric-sql/pglite':

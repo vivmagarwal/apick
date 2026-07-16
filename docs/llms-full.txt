@@ -1,0 +1,960 @@
+# APIck — complete framework guide (compiled from docs/guides)
+
+
+---
+
+# APIck — API Construction Kit
+
+**A pure-headless, AI-first application platform.** Define your content model in
+TypeScript; get a validated REST API, RBAC, multi-tenancy, versioned documents,
+reliable webhooks, durable background jobs, OpenAPI, `llms.txt` and a
+first-class MCP server — from one definition, in one process, on Postgres.
+
+No admin UI, by design. Developers, apps and AI agents are the users.
+
+```ts
+import { createApp, defineCollection, f } from 'apick';
+
+const todos = defineCollection('todos', {
+  fields: {
+    title: f.text({ required: true }),
+    done: f.boolean({ default: false }),
+  },
+});
+
+const app = await createApp({ collections: [todos] });
+await app.listen(3000);
+```
+
+That is a complete, working backend: authenticated CRUD with validation at
+`/v1/collections/todos/docs`, draft→publish workflow, version history and
+rollback, OpenAPI 3.1 at `/openapi.json`, an agent guide at `/llms-full.txt`,
+and an MCP endpoint at `/mcp` — with an embedded Postgres (PGlite), so there is
+nothing to install. Point `database` at `postgres://…` when you deploy.
+
+```bash
+npx apick init my-app && cd my-app && npm i && npm start   # or copy the snippet above
+```
+
+## Why APIck exists
+
+APIck is a from-scratch answer to the architectural problems that headless
+CMSes (studied in depth: Strapi) cannot fix without breaking their ecosystems:
+
+| Their architecture | What goes wrong | APIck's structure |
+|---|---|---|
+| Content model = DDL, auto-synced at boot | Renames silently drop columns; replicas race on DDL | Fixed 12-table schema owned by the library. Content models are **data**. A rename is a lossless JSONB key migration — declared in code, applied transactionally |
+| Authorization in controllers, query engine beneath | Private-field filter leaks: 7 advisories in 4 years, same root cause | Authorization lives **in the query planner**. Unknown and unreadable fields are rejected at plan time — filters can't become a boolean oracle, and populate applies the *target's* policy at every hop |
+| Publish = deep row cloning | Unique constraints crash in components; 5× write amplification | **Publish is a pointer move.** Versions are append-only; drafts and published are two heads of one document. Unique works everywhere, history/rollback are free |
+| Cron/webhooks fire per replica; writable FS required | Double sends, no horizontal scaling | Stateless replicas. `FOR UPDATE SKIP LOCKED` job runner + claimed cron ticks: everything fires **once per cluster**, verified by test with two live instances |
+| Fire-and-forget webhooks | Lost events | Transactional-outbox fan-out, HMAC-signed payloads, retries with backoff, dead-letter + replay over HTTP |
+| Admin auth ≠ API auth | Two parallel permission systems | **One RBAC model.** Operator (control plane) and tenants are scopes of the same system. Keys, roles, grants, field whitelists, row conditions — all planner-enforced |
+
+## What's in the box
+
+- **Schema DSL** — `f.text/integer/number/boolean/datetime/date/enum/json/object/list/relation/relations/blocks`,
+  with `required`, `unique` (works in nested objects), `private` (structurally
+  invisible), `indexed` (opt-in DDL at migrate time), `immutable`, `default`,
+  validation constraints. One definition feeds TS types, runtime validation,
+  OpenAPI, MCP tools and index hints.
+- **Documents** — identity is `(docId uuid7, locale, version)`. Writes are RFC 7386
+  merge patches with optimistic concurrency (`ifVersion`). Append-only history,
+  restore-as-new-version, publish/unpublish pointers.
+- **Query language** — JSON filters (`$eq $ne $gt $gte $lt $lte $in $nin $contains
+  $icontains $startsWith $endsWith $null`, `$and/$or/$not`), sort, pagination,
+  one-hop populate, field projection — all **bounded** (node/sort/populate/page
+  caps) so the API can't be coerced into a pathological query.
+- **Saved queries** — Drupal Views, headless: parameterized, typed, cached-able,
+  permission-scoped; exposed as REST endpoints *and* MCP tools.
+- **Multi-tenancy** — native. Row-level isolation enforced structurally in the
+  planner; `x-apick-tenant` header or a `resolveTenant(request)` hook; operator
+  scope provisions and oversees tenants. Single-tenant = N=1, invisible.
+- **RBAC** — built-in roles (`operator-admin`, `tenant-admin`, `content-editor`,
+  `content-reader`, `public`) plus custom roles with per-field whitelists and
+  row conditions (`"$me"` = caller). Additive/union semantics.
+- **Webhooks** — signed (`apick-signature`), at-least-once, exponential backoff,
+  dead-letter, replay endpoint, per-event patterns (`doc.published:articles`).
+- **Jobs & cron** — durable Postgres-native queue with retries/backoff/dead-letter/
+  idempotency keys; code-defined cron (5-field or `@every:ms`), single-fire
+  across replicas.
+- **Event log** — one append-only stream powering webhooks, audit, history,
+  interaction logging (`http.request`, `mcp.call`), and a pollable change-feed
+  cursor (`GET /v1/events?afterSeq=`).
+- **MCP** — stateless streamable-HTTP server at `/mcp`; schema-derived tools;
+  least-privilege via the same keys; every mutation attributed in the audit log.
+- **Portability** — `GET /v1/export` / `POST /v1/import` round-trip losslessly
+  (uuid7 ids are portable); plain-SQL escape hatch — it's just Postgres.
+- **Self-description** — live `/openapi.json`, `/llms.txt`, `/llms-full.txt`
+  generated from the running schema.
+
+## Tested like a consumer
+
+There are no unit-coverage tests. Every promise above has a black-box test that
+boots real instances and talks HTTP/MCP — and fails if the promise breaks:
+private fields stay unfilterable, two replicas never double-fire a cron (real
+Postgres, two live apps), a rename preserves data across restarts, export→import
+is byte-identical, a real MCP SDK client round-trips. See
+[`tests/blackbox/`](tests/blackbox/src) — 14 suites, 72 tests.
+
+```bash
+pnpm install && pnpm test        # Docker enables the real-Postgres suites
+```
+
+## Documentation
+
+- [Getting started](docs/guides/getting-started.md)
+- [Schema & fields](docs/guides/schema.md) · [Queries & saved queries](docs/guides/queries.md)
+- [Auth & RBAC](docs/guides/auth-rbac.md) · [Multi-tenancy](docs/guides/tenancy.md)
+- [Webhooks](docs/guides/webhooks.md) · [Jobs & cron](docs/guides/jobs-cron.md)
+- [MCP](docs/guides/mcp.md) · [Deployment](docs/guides/deployment.md) · [Portability](docs/guides/portability.md)
+- [Extending](docs/guides/extending.md) · [Architecture decisions](docs/decisions/0001-architecture.md)
+- Machine-readable: [llms.txt](docs/llms.txt) · [llms-full.txt](docs/llms-full.txt)
+
+## Repository layout
+
+- `packages/apick` — the library (`apick` on npm): kernel, schema, planner, HTTP, MCP, CLI
+- `tests/blackbox` — the outside-in promise suite
+- `examples/hello-world`, `examples/blog` — runnable apps
+- `docs/` — guides, ADRs, llms files
+
+## Status & non-goals (v1)
+
+v1 focuses on a small, stable core. Explicitly out (see
+[ADR-0001](docs/decisions/0001-architecture.md)): GraphQL, media pipeline, the
+OAuth-connector framework, no-code automations, schema-per-tenant isolation,
+SSE change-feed transport, i18n fallback chains. The primitives they need
+(event log, jobs, planner-scoped tokens) are already here.
+
+MIT licensed.
+
+
+---
+
+# Getting started
+
+## Install & run
+
+```bash
+mkdir my-app && cd my-app && npm init -y && npm i apick
+```
+
+`server.js` (or use `npx apick init`):
+
+```js
+import { createApp, defineCollection, f } from 'apick';
+
+const todos = defineCollection('todos', {
+  fields: {
+    title: f.text({ required: true }),
+    done: f.boolean({ default: false }),
+  },
+});
+
+const app = await createApp({ collections: [todos] });
+console.log('root key:', app.rootKey); // printed ONCE on first boot — save it
+await app.listen(3000);
+```
+
+```bash
+node server.js
+```
+
+With no `database` configured, APIck runs an embedded Postgres (PGlite) in
+`./.apick-data` — full SQL semantics, zero setup. For deployment, set
+`database: 'postgres://…'` (or the `APICK_DATABASE_URL` / `DATABASE_URL` env vars).
+
+## First requests
+
+```bash
+KEY=<the printed root key>
+
+# create + publish
+curl -X POST http://127.0.0.1:3000/v1/collections/todos/docs \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"data": {"title": "Ship it"}, "publish": true}'
+
+# list (published by default)
+curl -H "Authorization: Bearer $KEY" http://127.0.0.1:3000/v1/collections/todos/docs
+
+# patch the draft (merge patch: send only what changes)
+curl -X PATCH http://127.0.0.1:3000/v1/collections/todos/docs/<docId> \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"patch": {"done": true}}'
+```
+
+## The document lifecycle
+
+Every document has a **draft head** and optionally a **published head** — two
+pointers into an append-only version history of the same identity
+`(docId, locale)`:
+
+- `POST …/docs` creates version 1 as a draft (`"publish": true` publishes atomically)
+- `PATCH …/docs/:docId` merge-patches the draft → new version
+- `POST …/docs/:docId/publish` points the published head at the current draft (no copying)
+- Reads default to `status=published`; `?status=draft` needs the `readDraft` permission
+- `GET …/versions`, `GET …/versions/:n`, `POST …/versions/:n/restore` — history and rollback
+
+## What you get for free
+
+| Surface | URL |
+|---|---|
+| REST API | `/v1/collections/:key/docs` |
+| OpenAPI 3.1 (live) | `/openapi.json` |
+| Agent guides (live) | `/llms.txt`, `/llms-full.txt` |
+| MCP server | `/mcp` |
+| Health | `/health` |
+| Audit / change feed | `/v1/events` |
+
+## The error contract
+
+Every error, on every surface:
+
+```json
+{ "error": { "code": "validation", "message": "…", "details": { } } }
+```
+
+Codes → status: `bad_request`/`plan_rejected` 400, `unauthorized` 401,
+`forbidden` 403, `not_found` 404, `conflict` 409, `validation` 422, `internal` 500.
+
+## Next
+
+- [Schema & fields](schema.md) — the full DSL, uniques, private fields, renames
+- [Auth & RBAC](auth-rbac.md) — keys, roles, custom permissions
+- [Deployment](deployment.md) — real Postgres, migrations, replicas
+
+
+---
+
+# Schema & fields
+
+Content models are **code** (TypeScript is the source of truth) and **data**
+(rows in a fixed registry table) — never DDL. Defining a collection creates no
+tables; the only DDL your model can ever cause is an opt-in `CREATE INDEX` at
+migrate time.
+
+```ts
+import { defineCollection, f } from 'apick';
+
+const articles = defineCollection('articles', {
+  description: 'Blog articles',
+  access: { publicRead: true }, // anonymous may read PUBLISHED docs
+  fields: {
+    title: f.text({ required: true, maxLength: 200, indexed: true }),
+    slug: f.slug({ unique: true }),
+    category: f.enum(['tech', 'life']),
+    views: f.integer({ min: 0, default: 0 }),
+    publishAt: f.datetime(),
+    internalNotes: f.text({ private: true }),
+    seo: f.object({ metaTitle: f.text(), canonical: f.uri() }),
+    tags: f.list(f.text()),
+    author: f.relation('authors'),        // to-one: value is a docId string
+    related: f.relations('articles'),     // to-many: ordered docId array
+    body: f.blocks({                      // composable content (dynamic zone)
+      prose: { markdown: f.markdown({ required: true }) },
+      quote: { text: f.text({ required: true }), attribution: f.text() },
+    }),
+  },
+});
+```
+
+## Field types
+
+`f.text` `f.markdown` `f.email` `f.uri` `f.slug` `f.integer` `f.number`
+`f.boolean` `f.datetime` (ISO-8601) `f.date` (YYYY-MM-DD) `f.enum` `f.json`
+`f.object` `f.list` `f.relation` `f.relations` `f.blocks`
+
+## Field options
+
+| Option | Meaning |
+|---|---|
+| `required` | must be present and non-null in the (merged) document |
+| `unique` | unique per (tenant, collection, locale) across logical documents — scalars only, **works inside nested objects**, and never conflicts between a doc's own draft and published heads |
+| `private` | write-only: never returned, never filterable/sortable/populatable, absent from read schemas, events and webhooks. Perfect for tokens, emails, internal notes |
+| `indexed` | expression index on the JSONB path — created only by `apick migrate` / `migrate: 'apply'`, never at serve time |
+| `immutable` | set at create; later patches that change it are rejected |
+| `default` | applied at create when the field is absent (top-level fields) |
+| `description` | flows into OpenAPI, MCP tool schemas and llms-full.txt |
+| constraints | `minLength`/`maxLength`/`pattern` (text), `min`/`max` (numbers) |
+
+## Validation
+
+Writes are validated against the **merged** document — a patch that would leave
+the document invalid is rejected with `422` and per-path issues:
+
+```json
+{ "error": { "code": "validation", "details": { "issues": [
+  { "path": "seo.metaTitle", "message": "Expected string" }
+] } } }
+```
+
+Unknown keys are rejected (`additionalProperties: false` everywhere).
+
+## Renaming a field (lossless, always)
+
+Declare the rename; APIck migrates the JSONB keys — heads, full version
+history, unique and edge indexes — in one transaction at startup/migrate. Data
+is never dropped:
+
+```ts
+defineCollection('posts', {
+  fields: { title: f.text({ required: true }) },  // was "headline"
+  renamedFields: { title: 'headline' },           // newKey: oldKey (top-level fields)
+});
+```
+
+Removing a field from code never deletes stored data — the values stop being
+validated/returned, and reappear if you restore the field. There is no
+destructive schema operation in APIck.
+
+## Relations
+
+- Values are docId strings (uuid v7). Targets must exist at write time (same tenant).
+- Reads resolve relations with `?populate=author` — one hop, rendered under the
+  **target collection's** permissions and the same draft/published status as the
+  parent request. A published article pointing at a never-published author
+  populates as `null` — publish the author.
+- Deleting a target leaves dangling refs that populate as `null` (documented
+  trade-off; subscribe to `doc.deleted` events to clean up if you care).
+- Reverse lookups are indexed internally (`apick_edges`) for future traversal
+  features; v1 filters only apply to a collection's own fields.
+
+## TypeScript inference
+
+```ts
+import type { InferDoc } from 'apick';
+type Article = InferDoc<typeof articles>; // { title: string; views?: number | null; … }
+```
+
+
+---
+
+# Queries & saved queries
+
+## Listing
+
+```
+GET /v1/collections/articles/docs
+  ?filter={"$or":[{"views":{"$gt":100}},{"title":{"$startsWith":"Hello"}}]}
+  &sort=-createdAt,title
+  &page=1&pageSize=25&count=true
+  &status=published|draft
+  &locale=default
+  &populate=author,related
+  &fields=title,slug
+```
+
+`filter` is JSON. Operators:
+
+| Operator | Types | Notes |
+|---|---|---|
+| `$eq` `$ne` | scalars, to-one relations | `{"title":"x"}` is shorthand for `$eq` |
+| `$gt` `$gte` `$lt` `$lte` | text, numbers, datetime, date | |
+| `$in` `$nin` | scalars | 1–100 values |
+| `$contains` `$icontains` `$startsWith` `$endsWith` | text, enum | LIKE metacharacters are escaped — always literal |
+| `$null` | any filterable | `{"$null": true|false}` |
+| `$contains` | to-many relations | membership: `{"related":{"$contains":"<docId>"}}` |
+| `$and` `$or` `$not` | combinators | nest freely within the node budget |
+
+Nested object fields use dotted paths: `{"seo.metaTitle": {"$eq": "x"}}`.
+`json`, `list`, `blocks` and `object` fields are not filterable as a whole.
+System sorts: `createdAt`, `updatedAt`, `publishedAt`, `docId`.
+
+## The planner is the security boundary
+
+A filter/sort/populate may reference only fields that (a) exist in the schema
+and (b) the caller may read. Anything else — including **private** fields — is
+rejected at plan time with `400 plan_rejected`, using the same message for
+"private" and "nonexistent" so field existence can't be probed. RBAC row
+conditions and the tenant id are compiled into every query and every populate
+hop.
+
+## Bounded by default
+
+pageSize ≤ 100 · filter ≤ 50 nodes · sort ≤ 3 keys · populate ≤ 8 relations ·
+`$in` ≤ 100 values · populate of a to-many caps at 50 targets. `count=true` is
+opt-in (counting is a real cost). These are hard caps, not suggestions — there
+is no query a client can send that produces unbounded work.
+
+## Populate
+
+`populate=author` adds a `populated` object beside `data` (raw refs stay
+intact):
+
+```json
+{ "docId": "…", "data": { "author": "<docId>" },
+  "populated": { "author": { "docId": "…", "data": { "name": "Ada" } } } }
+```
+
+One hop deep in v1 — deep populate is the classic unbounded-read footgun; use a
+second request or a saved query per hop.
+
+## Saved queries — views, headless
+
+Define once in code; expose over REST **and** MCP; the caller still needs read
+permission on the collection (a saved query is a convenience, never an
+escalation):
+
+```ts
+import { defineQuery } from 'apick';
+
+const latest = defineQuery('latest', {
+  collection: 'articles',
+  description: 'Latest published articles in a category',
+  filter: { category: { $eq: { $param: 'category' } } },
+  sort: '-createdAt',
+  pageSize: 10,
+  populate: ['author'],
+  params: { category: { type: 'text', required: true } },
+});
+
+await createApp({ collections, queries: [latest] });
+```
+
+```
+GET /v1/queries/latest?category=tech&page=2&count=true
+MCP tool: query_latest { "category": "tech" }
+```
+
+Params are typed (`text` | `integer` | `number` | `boolean`) with optional
+`default`; missing required params → `422`.
+
+
+---
+
+# Auth & RBAC
+
+One model for everything. A request resolves to an **access context**: a
+principal (or anonymous), the **scope** it acts in (operator, or one tenant),
+and its effective permission rules. There is no separate admin auth system —
+avoiding the two-parallel-auth-systems trap is a founding decision.
+
+## API keys
+
+- `Authorization: Bearer <key>`. Keys are stored as SHA-256 hashes; the token is
+  shown exactly once at creation.
+- First boot creates the **root** principal (operator scope) and one key,
+  returned as `app.rootKey` / printed once. Pass `rootKey: '…'` (or keep it in
+  your secret manager) for reproducible environments.
+
+Create scoped keys over HTTP (requires `manage system:keys`):
+
+```bash
+# safe path: creates a service principal + grants a role in the CURRENT tenant
+POST /v1/keys   { "role": "content-editor", "name": "CI publisher" }
+# → { "token": "apick_…", "id": "…", "principalId": "…" }   token shown once
+
+# operator-only: key for an existing principal
+POST /v1/keys   { "principalId": "…" }
+```
+
+Revoke: `DELETE /v1/keys/:id`. Expiry: pass `expiresAt`. Tenant admins can only
+mint keys via the role-path (never for arbitrary existing principals) and only
+revoke keys fully inside their tenant — privilege escalation is structurally
+blocked.
+
+## Built-in roles
+
+| Role | Grants |
+|---|---|
+| `operator-admin` | everything, everywhere (`*` on `*`) — the root key's role |
+| `tenant-admin` | all doc actions + manage keys/roles/webhooks/events/jobs/principals/export within the tenant |
+| `content-editor` | read, readDraft, create, update, delete, publish on all collections |
+| `content-reader` | read (published) on all collections |
+| `public` | what anonymous callers get — empty by default; `access: { publicRead: true }` on a collection adds published-read |
+
+Doc actions: `read` (published), `readDraft` (drafts, versions), `create`,
+`update`, `delete`, `publish`. System resources: `system:tenants` (operator
+only), `system:keys`, `system:roles`, `system:webhooks`, `system:events`,
+`system:jobs`, `system:principals`, `system:export`.
+
+## Custom roles
+
+```bash
+POST /v1/roles
+{
+  "key": "support",
+  "name": "Support agent",
+  "permissions": [
+    { "action": "read", "resource": "doc:tickets", "fields": ["subject", "status"] },
+    { "action": "update", "resource": "doc:tickets",
+      "condition": { "assignee": { "$eq": "$me" } } }
+  ]
+}
+POST /v1/grants  { "principalId": "…", "roleKey": "support" }
+```
+
+- **`fields`** — a read whitelist. Enforced by the planner: fields outside it
+  are unprojectable AND unfilterable/unsortable (rejected like unknown fields).
+- **`condition`** — a row filter (same JSON grammar as queries) AND-ed into
+  every read the role performs. `"$me"` substitutes the caller's principal id.
+  Non-matching documents are invisible (404), not forbidden.
+- Rules are **additive** (union across roles + the public baseline). There are
+  no deny rules; on a `publicRead` collection no role can see less than
+  anonymous. Restrictions are meaningful on non-public collections.
+
+## Anonymous access
+
+No token → the `public` role in the resolved tenant. Introspection
+(`/v1/collections`), reads, saved queries and MCP all honor it. Everything else
+is `401`.
+
+## Private fields vs field whitelists
+
+`private: true` is schema-level and absolute: no role, not even
+`operator-admin`, can read or filter it over any API (it's for secrets — the
+value only exists for your server-side code and raw SQL). Whitelists are
+role-level restrictions among the non-private fields.
+
+
+---
+
+# Multi-tenancy
+
+APIck is multi-tenant native: one install serves N tenants, and the tenant is a
+first-class scope threaded through the data model and the query planner from
+day one. Isolation is **structural** — a `tenant_id` predicate the planner
+compiles into every query and populate hop — not a filter someone can forget.
+
+Single-tenant apps: do nothing. Install bootstrap creates a `default` tenant
+and every request lands there. You'll never see tenancy until you want it.
+
+## Scopes
+
+```
+operator (control plane, one per install)
+└── tenants: default, acme, globex, …
+```
+
+- **Operator** provisions/suspends tenants, holds cross-tenant visibility, and
+  is a *scope in the same RBAC model* — an operator-scope role grant
+  (`tenant_id = null`), not a second auth system.
+- **Tenant** grants apply within exactly one tenant. A tenant key presenting a
+  different tenant's header gets `401/403` — its grants simply don't apply there.
+
+## Resolving the tenant
+
+Priority per request:
+
+1. `x-apick-tenant: <slug-or-id>` header
+2. your `resolveTenant(request)` hook — e.g. map `Host:` subdomains:
+
+```ts
+await createApp({
+  resolveTenant: (req) => new URL(req.url).hostname.split('.')[0] ?? null,
+});
+```
+
+3. the install's default tenant.
+
+Custom-domain TLS and routing are the deployer's job (Caddy on-demand TLS,
+Cloudflare for SaaS, your platform). APIck only needs to learn the tenant from
+the request.
+
+## Operating tenants
+
+```bash
+POST  /v1/tenants           { "slug": "acme", "name": "Acme Corp" }     # operator
+PATCH /v1/tenants/acme      { "status": "suspended" }                    # turns the tenant off (403s)
+GET   /v1/tenants                                                        # operator
+
+# then create the tenant's own admin key:
+POST /v1/keys  (header x-apick-tenant: acme)  { "role": "tenant-admin", "name": "acme admin" }
+```
+
+Everything a tenant does — documents, uniques, webhooks, deliveries, events,
+jobs, crons — is scoped to it. Unique values are independent per tenant.
+Operator keys act on any tenant by setting the header.
+
+## Isolation guarantees (tested)
+
+- Cross-tenant list/get/filter probes return empty/404 — including filter-based
+  existence probes (`tenant-isolation.test.ts`).
+- Webhooks fire only for their tenant's events; event-log reads are scoped.
+- v1 is row-level isolation on shared tables. Schema-per-tenant/db-per-tenant
+  (stronger isolation, data residency) is a planned post-v1 backend option —
+  the scoping seam is already in one place (the planner).
+
+
+---
+
+# Webhooks
+
+Reliable, not fire-and-forget. Fan-out happens in the **same transaction** as
+the write (transactional outbox), deliveries ride the durable job runner, and
+every delivery is recorded, inspectable, and replayable.
+
+## Subscribe
+
+```bash
+POST /v1/webhooks
+{
+  "name": "search-indexer",
+  "url": "https://indexer.example.com/hooks/apick",
+  "events": ["doc.published:articles", "doc.deleted:articles"]
+}
+# → includes "secret": "whsec_…"   (shown once — verify signatures with it)
+```
+
+Patterns: `*` · `doc.*` · `doc.published` · `doc.published:articles`
+(`:collection` suffix filters by subject collection).
+
+Event types today: `doc.created` `doc.updated` `doc.published` `doc.unpublished`
+`doc.deleted` `doc.restored` `schema.changed` `schema.fieldRenamed`
+`http.request` `mcp.call`.
+
+## Payload
+
+```json
+{
+  "id": "<eventId>", "deliveryId": "<deliveryId>", "type": "doc.published",
+  "tenantId": "…", "subject": { "collection": "articles", "docId": "…", "locale": "default" },
+  "payload": { "version": 3, "data": { "…": "private fields are already redacted" } },
+  "createdAt": "…", "attempt": 1
+}
+```
+
+Headers: `apick-signature`, `apick-event-id`, `apick-delivery-id`,
+`apick-event-type`.
+
+## Verify the signature
+
+`apick-signature: t=<unix-ms>,v1=<hex hmac-sha256(secret, t + "." + rawBody)>`
+
+```ts
+import { verifyWebhookSignature } from 'apick';
+if (!verifyWebhookSignature(secret, rawBody, req.headers['apick-signature'])) {
+  return res.status(401).end();
+}
+```
+
+Constant-time compare + 5-minute timestamp tolerance built in.
+
+## Delivery semantics
+
+- **At-least-once.** Deduplicate on `apick-delivery-id` (retries of the same
+  delivery keep the same id).
+- Non-2xx or a timeout (10s) → retry with exponential backoff. Default policy:
+  6 attempts, base 1s (configurable: `webhookRetry: { maxAttempts, backoffMs }`).
+- Exhausted → the delivery is **dead-lettered**, never lost:
+
+```bash
+GET  /v1/webhooks/:id/deliveries?state=dead     # inspect (attempts, last_status, last_error)
+POST /v1/deliveries/:id/replay                  # re-deliver after you fix the receiver
+```
+
+- Replica-safe: with N app instances polling the same database, each delivery
+  is claimed by exactly one worker (`replica-single-fire.test.ts` proves it with
+  two live instances).
+- Disable/enable without losing config: `PATCH /v1/webhooks/:id {"enabled": false}`.
+
+## Change feed without webhooks
+
+The same event log is pollable with a cursor — useful for agents and batch
+consumers:
+
+```
+GET /v1/events?types=doc.*&afterSeq=<cursor>&limit=100
+→ { "data": [...], "meta": { "cursor": "1042" } }
+```
+
+
+---
+
+# Background jobs & cron
+
+One durable, Postgres-native job runner powers webhooks, your background work,
+and scheduled tasks. No Redis, no extra infrastructure — jobs are rows claimed
+with `FOR UPDATE SKIP LOCKED`, so any number of replicas can work the same
+queue without double-processing.
+
+## Define handlers, enqueue work
+
+```ts
+const app = await createApp({
+  collections,
+  jobs: {
+    'send-welcome': async (payload, { tenantId, attempts, db }) => {
+      await emailProvider.send(payload.email);   // throw to retry
+    },
+  },
+});
+
+// enqueue (server-side; commits atomically if you're inside your own tx flow)
+await app.enqueue({
+  queue: 'send-welcome',
+  payload: { email: 'a@b.c' },
+  tenantId: app.defaultTenant.id,
+  runAt: new Date(Date.now() + 60_000),   // optional delay
+  maxAttempts: 5, backoffMs: 1000,        // exponential: 1s, 2s, 4s, …
+  idempotencyKey: 'welcome:a@b.c',        // duplicate enqueues are dropped
+});
+```
+
+Semantics:
+
+- **Retries with backoff** — a throwing handler reschedules the job until
+  `maxAttempts`, then it's **dead-lettered** (state `dead`), never lost.
+- **Dead-letter over HTTP** — `GET /v1/jobs?state=dead`, `POST /v1/jobs/:id/replay`
+  (requires `manage system:jobs`).
+- **Idempotent enqueues** — `(queue, idempotencyKey)` is unique.
+- **Crash rescue** — jobs stuck in `running` past the lock timeout (default 60s)
+  are returned to `pending` by any live worker.
+- Queue names starting with `apick.` are reserved for internals.
+
+## Cron — fires once per cluster
+
+```ts
+await createApp({
+  jobs: { 'nightly-digest': async () => { /* … */ } },
+  crons: [
+    { key: 'digest', schedule: '0 2 * * *', queue: 'nightly-digest' },   // 5-field cron, UTC
+    { key: 'poll',   schedule: '@every:30000', queue: 'poll-upstream' }, // every 30s
+  ],
+});
+```
+
+- Schedules are code-defined and synced at boot; removing one from code removes it.
+- The tick claims due schedules with `SKIP LOCKED` **and** enqueues with an
+  idempotency key of `(cron key, scheduled instant)` — belt and braces, so a
+  schedule fires exactly once cluster-wide no matter how many replicas run.
+  This is verified by a test running two full app instances against one
+  Postgres (`replica-single-fire.test.ts`).
+- Handlers receive `{ cronKey, scheduledFor }` in the payload.
+
+## Running workers
+
+Every `createApp` process runs a worker + cron ticker by default. For a
+dedicated worker fleet, serve HTTP with `worker: false` and run worker-only
+processes (`createApp({ worker: true })` without calling `listen`). Tune with
+`pollIntervalMs` (default 500) and `tickIntervalMs` (default 1000).
+
+
+---
+
+# MCP — agents as first-class users
+
+Every APIck app is an MCP server: stateless streamable HTTP at `/mcp`,
+speaking protocol versions 2024-11-05 through 2025-06-18. Point any MCP client
+(Claude Code, Claude Desktop, the SDK) at it:
+
+```json
+{
+  "mcpServers": {
+    "my-apick-app": {
+      "type": "http",
+      "url": "https://api.example.com/mcp",
+      "headers": { "Authorization": "Bearer <api key>", "x-apick-tenant": "acme" }
+    }
+  }
+}
+```
+
+## Tools
+
+Schema-derived, so they're always in sync with the code:
+
+| Tool | Purpose |
+|---|---|
+| `list_collections` | discover collections + their read/write JSON Schemas (call first) |
+| `list_documents` | filter/sort/paginate/populate — full query grammar |
+| `get_document` / `create_document` / `update_document` / `delete_document` | CRUD (update = merge patch, supports `ifVersion`) |
+| `publish_document` / `unpublish_document` | the publish pointer |
+| `list_versions` / `get_version` / `restore_version` | history & rollback |
+| `query_<key>` | one tool per saved query, with typed params |
+
+## Security model (identical to REST — by construction)
+
+MCP calls resolve the same access context and flow through the same planner and
+store as HTTP:
+
+- **Least privilege** — a `content-reader` key gets a tool *error* on
+  `create_document`; a private-field filter probe is rejected exactly like REST.
+  Mint narrowly-scoped keys for agents (`POST /v1/keys {"role": "...", "name": "my-agent"}`),
+  optionally with `expiresAt`.
+- **Attribution** — every mutation lands in the event log with
+  `actor: { principalId, via: "mcp", keyId }`; every tool call is recorded as an
+  `mcp.call` interaction event (tool, outcome, latency, arg keys — argument
+  *values* are not logged).
+- **Bounded** — the same plan-time caps apply; an agent cannot construct a
+  pathological query.
+
+## Design notes
+
+- Stateless: each POST is independent; no sessions, no SSE stream. This keeps
+  N-replica deployments trivial (any replica can answer any call).
+- Tool errors return `isError: true` with the standard APIck error envelope in
+  the content — agents can read the `code` and self-correct.
+- Give agents `/llms-full.txt` as context for the filter grammar and field
+  semantics; it is generated from the live schema.
+
+
+---
+
+# Deployment
+
+## Database
+
+APIck is Postgres-generic (Postgres ≥ 14): AWS RDS, Neon, **Supabase**
+(first-class target — it *is* Postgres; APIck deliberately doesn't build on
+PostgREST or GoTrue so there's no lock-in), Cloud SQL, or self-hosted.
+
+```bash
+APICK_DATABASE_URL=postgres://user:pass@host:5432/db node server.js
+```
+
+Local dev needs nothing: the embedded PGlite database (`pglite://./.apick-data`)
+is real Postgres (v17 WASM) with identical SQL semantics, so dev/prod parity
+holds. `pglite://memory` is ideal for tests.
+
+## Migrations are explicit — the server never runs DDL at boot
+
+- Against **PGlite** (dev), `createApp` applies APIck's internal migrations
+  automatically (`migrate: 'apply'` is the default there).
+- Against **Postgres**, the default is `migrate: 'check'`: the server *refuses
+  to start* if migrations are pending, with instructions. Apply them as a
+  deploy step:
+
+```bash
+npx apick migrate --database $APICK_DATABASE_URL          # kernel tables
+npx apick migrate --database $APICK_DATABASE_URL --app ./dist/schema.js
+# --app also creates the opt-in `indexed` field indexes (the only user-model DDL)
+npx apick status  --database $APICK_DATABASE_URL
+```
+
+(Or opt in with `migrate: 'apply'` if boot-time migration fits your platform.)
+
+Content-model changes never need migrations — models are data. Declared
+`renamedFields` are applied at startup as lossless transactional JSONB key
+migrations (see [schema.md](schema.md)).
+
+## Horizontal scaling
+
+APIck is stateless: no writable filesystem, no sticky sessions, no
+leader election. Run N replicas against one Postgres:
+
+- every replica serves HTTP;
+- every replica runs the job worker + cron ticker by default — jobs are claimed
+  with `SKIP LOCKED`, cron instants are idempotency-keyed, webhooks deliver
+  once (all verified by the two-replica test suite);
+- to separate concerns, run web processes with `worker: false` and dedicated
+  worker processes that never `listen()`.
+
+## Mounting inside your own server
+
+`createApp` returns a fetch handler — mount it under Next.js, an existing Hono
+app, Bun, or anything fetch-native; or add routes to `app.hono` directly via
+`extend`. TLS, custom domains and per-tenant routing belong to your proxy
+(Caddy on-demand TLS / Cloudflare for SaaS) — give APIck a `resolveTenant`
+hook and it scopes everything.
+
+## Secrets & keys
+
+- Set `rootKey` from your secret manager for reproducible installs (otherwise
+  it's generated and printed once on first boot).
+- API keys are stored hashed (SHA-256); webhook secrets are stored to sign
+  payloads. Use scoped keys with `expiresAt` for CI and agents.
+
+## Observability
+
+- Structured JSON logs (pino-shaped) on stdout; inject your own with `logger`.
+- The event log doubles as the interaction/audit trail (`/v1/events`) —
+  `http.request` and `mcp.call` events carry status + latency, with request
+  *bodies* deliberately excluded and private fields redacted from doc events.
+- `interactionLog: 'all' | 'mutations' | 'off'` (default `mutations`).
+
+
+---
+
+# Data portability
+
+No lock-in is a behavioural guarantee, tested end-to-end
+(`portability.test.ts`).
+
+## Export / import
+
+```bash
+GET  /v1/export?collections=articles,authors     # requires manage system:export
+POST /v1/import      { "docs": [...], "mode": "skip" | "overwrite" }
+```
+
+- The export is a **backup**: draft + published heads for every document in the
+  tenant, **including private fields** (that's why it's permission-gated).
+- Document ids are UUIDv7 — globally portable, so imports preserve identity and
+  relations exactly (the incremental-id transfer problem is designed out).
+- Round-trip fidelity: export → import into a fresh install → export again
+  produces identical content; unique indexes and relation edges are rebuilt on
+  import; divergent draft/published heads survive.
+- `skip` (default) leaves existing docs untouched; `overwrite` replaces heads.
+- Version *history* is not exported in v1 (heads are); history remains in the
+  source database.
+
+## The escape hatch is SQL
+
+Your data is 12 well-documented Postgres tables (`apick_*`), with document
+bodies as human-readable JSONB in `apick_docs.draft_data` /
+`published_data` and full history in `apick_doc_versions.data`:
+
+```sql
+select doc_id, draft_data->>'title' as title
+from apick_docs where collection = 'articles';
+```
+
+`pg_dump` is always a complete, restorable backup. Nothing is encoded in
+proprietary blobs; deleting APIck leaves you with clean relational data.
+
+
+---
+
+# Extending APIck
+
+APIck's power comes from composable primitives plus a small, stable surface —
+deliberately **not** from letting extensions override internals (the pattern
+that makes Drupal/Strapi upgrades break). Everything below is public API.
+
+## Custom endpoints
+
+You own `main()`; APIck is a library. Add routes to the same Hono app:
+
+```ts
+const app = await createApp({
+  collections,
+  extend: (hono, core) => {
+    hono.get('/stats', async (c) => {
+      const ctx = c.get('access');            // the SAME access context as core routes
+      // use core.db (tagged-template sql) or the HTTP API for reads that must
+      // respect RBAC. Raw SQL bypasses the planner — treat it as trusted code.
+      return c.json({ ok: true, principal: ctx.principalId });
+    });
+  },
+});
+```
+
+Or mount `app.fetch` inside any fetch-native server (Next.js route handlers,
+Bun, an existing Hono/Express-with-adapter app) and keep your routes beside it.
+
+## Background work & automation
+
+The automation substrate is: **events → jobs**. Subscribe to the event log and
+do work durably:
+
+- register job handlers (`jobs: { queue: handler }`) with retries/dead-letter;
+- schedule them (`crons: [...]`) — single-fire across replicas;
+- react to data changes by polling `/v1/events?afterSeq=` or receiving your own
+  webhooks (a webhook pointed at your own endpoint is a perfectly good trigger);
+- enqueue follow-up work with `app.enqueue` (idempotency keys make it safe).
+
+## Server-side building blocks
+
+The `apick` package exports the kernel pieces extensions actually need —
+`sql` (safe tagged templates), `openDb`, `uuidv7`, `ApickError`/`errors`,
+`createLogger`, `verifyWebhookSignature`, plus all schema/type helpers. These
+are semver-stable; internals under `src/` are not part of the contract.
+
+## What deliberately does NOT exist
+
+- No hook that rewrites another collection's queries or bypasses the planner.
+- No plugin-provided DDL.
+- No middleware injection *between* the planner and the database.
+
+If you need behavior the primitives can't express, open an issue — the answer
+will be a new capability with a test, not an override point.
