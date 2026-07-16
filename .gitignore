@@ -20,3 +20,6 @@ coverage/
 
 # os
 .DS_Store
+
+# transient publish auth (never commit)
+.npmrc
