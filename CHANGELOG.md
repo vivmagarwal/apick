@@ -14,6 +14,11 @@ breaking API changes bump the minor.
   keystroke is lost across the editor's change debounce, even on block reorder.
 - **Editor niceties**: slug auto-generation from the title (until edited),
   draft autosave with a status indicator, and an unsaved-changes guard.
+- **Content security**: the public site sanitizes markdown→HTML by default at
+  the server-side render boundary (raw HTML dropped, link/image URL protocols
+  allow-listed) — covers editor, REST API and MCP writes alike; `content:
+  { sanitize: false }` opts out. (edodo-write already sanitizes the editor's
+  own rendering, so no editor change was needed.)
 - **Fix**: the login rate limiter is now per-CMS-instance (was module-global,
   so multiple `createCms` in one process could rate-limit each other).
 

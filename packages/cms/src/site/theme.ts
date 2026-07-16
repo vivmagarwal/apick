@@ -1,5 +1,5 @@
-import { marked } from 'marked';
 import { html, raw, type RawHtml } from './html.js';
+import { renderMarkdown } from './sanitize.js';
 
 /**
  * A theme is CODE — a set of template functions plus block renderers, exactly
@@ -99,10 +99,25 @@ export function mergeTheme(base: Theme, override?: PartialTheme): Theme {
   };
 }
 
-/** Markdown → trusted HTML (authors are trusted, like WordPress editors). */
-export function md(markdown: unknown): RawHtml {
-  if (typeof markdown !== 'string' || markdown.length === 0) return raw('');
-  return raw(marked.parse(markdown, { async: false }) as string);
+/**
+ * The install-wide markdown sanitization default. Set ONCE at boot by
+ * createCms (never per-request, so there's no cross-request state hazard).
+ * Defaults to safe.
+ */
+let sanitizeByDefault = true;
+
+/** Called once at startup by createCms from the `content.sanitize` config. */
+export function configureMarkdown(options: { sanitize?: boolean }): void {
+  if (options.sanitize !== undefined) sanitizeByDefault = options.sanitize;
+}
+
+/**
+ * Markdown → HTML for themes. Safe by default (raw HTML dropped, URL protocols
+ * allow-listed); pass `{ sanitize: false }` to opt a single call out when you
+ * deliberately want raw HTML/embeds in a trusted theme.
+ */
+export function md(markdown: unknown, options: { sanitize?: boolean } = {}): RawHtml {
+  return raw(renderMarkdown(markdown, options.sanitize ?? sanitizeByDefault));
 }
 
 export function makeBlockRenderer(theme: Theme): (blocks: unknown) => RawHtml {

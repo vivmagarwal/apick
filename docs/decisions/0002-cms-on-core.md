@@ -60,7 +60,9 @@ override points into internals, per ADR-0001.
 ## v1 boundaries (explicit)
 
 The CMS admin manages the **default tenant** (multi-tenant admin is post-v1;
-core's multi-tenancy is unaffected). No media library (use `f.uri` +
-object storage). Markdown from editors renders unsanitized (editors are
-trusted authors, as in WordPress — documented). Admin SPA is bundled at
+core's multi-tenancy is unaffected). Markdown is sanitized on render by default (raw HTML dropped, URL protocols
+allow-listed) at the server-side boundary — the non-bypassable one, since
+content also arrives via the REST API and MCP; opt out with
+`content: { sanitize: false }`. edodo-write independently sanitizes what it
+renders in the editor. Admin SPA is bundled at
 package build; consumers never run a frontend build.

@@ -106,8 +106,9 @@ export const theme = {
 };
 ```
 
-- `html` escapes interpolations by default; `md()` renders markdown (editors
-  are trusted authors, as in WordPress); `raw()` marks trusted HTML.
+- `html` escapes interpolations by default; `md()` renders markdown **safely by
+  default** (raw HTML dropped, link/image URL protocols allow-listed); `raw()`
+  marks pre-sanitized trusted HTML.
 - Templates: `layout, home, page, post, postList, notFound`. Blocks render
   `f.blocks` variants — add renderers for your own variants.
 
@@ -162,6 +163,27 @@ content stays portable and diff-able. No keystroke is lost across the editor's
 change debounce: the CMS pulls each editor's current text synchronously at save
 and autosave time.
 
+## Content security
+
+The public site renders markdown **safely by default**, at the server-side
+render boundary — the only place that covers every write path (editor, REST
+API, *and* MCP agents, which never touch the editor):
+
+- raw HTML is dropped (no `<script>`, `<iframe>`, `<img onerror=…>`)
+- link/image URLs are protocol-allow-listed (relative, `http(s)`, `mailto`,
+  `tel`; images also allow raster `data:image/*`) — `javascript:` and
+  `data:text/html` are neutralized
+
+The admin editor (edodo-write) also sanitizes what it renders, so opening
+untrusted content in the editor is safe too. If your setup is fully trusted
+and you deliberately want raw HTML/embeds in content, opt out:
+
+```js
+await createCms({ content: { sanitize: false } });   // default: true
+```
+
+Per-theme, `md(value, { sanitize: false })` opts out a single render call.
+
 ## Configuration
 
 `createCms` accepts everything `createApp` does (database, retention, CORS,
@@ -175,6 +197,7 @@ webhooks, telemetry, …) plus:
 | `theme` | child-theme overrides |
 | `plugins` | see above |
 | `media` | `{ maxFileSizeMB, allowedTypes, storage }` — see Media above |
+| `content` | `{ sanitize }` — markdown render safety (default true); see Content security |
 | `session.ttlHours` (72) / `session.secret` | session policy; secret comes from config → `APICK_CMS_SECRET` → generated once and persisted |
 
 ## Deploying
@@ -187,6 +210,5 @@ so replicas and restarts agree with no coordination.
 ## v1 boundaries
 
 The admin manages the default tenant (multi-tenant admin UI is post-v1 —
-the API's multi-tenancy is unaffected). Editor markdown renders unsanitized
-(trusted authors, as in WordPress). See
+the API's multi-tenancy is unaffected). See
 [ADR-0002](../decisions/0002-cms-on-core.md).

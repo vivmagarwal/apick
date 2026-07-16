@@ -23,7 +23,7 @@ import { adminRoutes } from './admin/routes.js';
 import { mediaRoutes, DEFAULT_MEDIA_OPTIONS, type MediaStorage } from './media/routes.js';
 import { siteRoutes } from './site/routes.js';
 import { defaultTheme } from './site/default-theme.js';
-import { mergeTheme, type PartialTheme } from './site/theme.js';
+import { configureMarkdown, mergeTheme, type PartialTheme } from './site/theme.js';
 
 export interface CmsPlugin {
   name: string;
@@ -49,6 +49,10 @@ export interface CmsConfig
   site?: { title?: string; description?: string; postsPageSize?: number };
   /** Media library: size/type limits and (optionally) your own storage driver (e.g. S3). */
   media?: { maxFileSizeMB?: number; allowedTypes?: string[]; storage?: MediaStorage };
+  /** Content rendering policy. `sanitize` (default true) hardens markdown→HTML
+   * on the public site: raw HTML dropped, link/image URL protocols allow-listed.
+   * Set false only for trusted setups that deliberately want raw HTML. */
+  content?: { sanitize?: boolean };
   /** Child-theme overrides on the default theme, or a whole different theme. */
   theme?: PartialTheme;
   plugins?: CmsPlugin[];
@@ -95,6 +99,7 @@ export async function createCms(config: CmsConfig = {}): Promise<CmsApp> {
     postsPageSize: config.site?.postsPageSize ?? 10,
   };
   const adminNav = plugins.flatMap((p) => p.adminNav ?? []);
+  configureMarkdown({ sanitize: config.content?.sanitize ?? true });
   const box = createContextBox();
 
   // The CMS is its own IdP on top of core's hook: session token -> user ->
@@ -128,6 +133,7 @@ export async function createCms(config: CmsConfig = {}): Promise<CmsApp> {
     plugins: _plugins,
     session: _session,
     media: _mediaCfg,
+    content: _content,
     extend: userExtend,
     collections: _cols,
     queries: _queries,
