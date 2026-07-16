@@ -29,6 +29,26 @@ replica-safety suite runs against a real Postgres container).
    deliberately short; PRs adding dependencies need a reason a stdlib/50-line
    solution can't cover.
 
+## Keeping docs (and llms.txt) in sync
+
+Two layers, two mechanisms:
+
+1. **`llms.txt` / `llms-full.txt` always match the guides — automatic &
+   deterministic.** They are GENERATED from `docs/guides/*` + each
+   `package.json` version by `scripts/build-llms.mjs` (never hand-edited). A
+   committed **git pre-commit hook** (`scripts/hooks/pre-commit`, auto-enabled
+   by the `prepare` script) regenerates and stages them on every commit, so you
+   cannot ship stale llms. `pnpm build` also regenerates; `pnpm llms:check`
+   fails if anything is out of date (drop it in CI).
+2. **The guides match the CODE — your responsibility.** When you change code
+   that alters documented behavior (an endpoint, field option, default, error
+   code, RBAC rule, invariant, config option), update the matching guide in
+   `docs/guides/` — including `docs/guides/apick-in-one-page.md` — in the SAME
+   PR. The black-box tests in `tests/blackbox/` are the executable spec; if a
+   doc claims a behavior, prefer a test that asserts it.
+
+Commands: `pnpm llms` (regenerate) · `pnpm llms:check` (verify no drift).
+
 ## Working on docs
 
 Guides live in `docs/guides/`. After editing, regenerate the machine-readable

@@ -1,0 +1,13 @@
+#!/bin/sh
+# Deterministic docs guard: regenerate the machine-readable llms files from the
+# guides and stage any changes, so a commit can NEVER ship stale llms.txt.
+# (Layer 1: llms always match the guides. Layer 2 — guides matching CODE — is a
+# human/agent judgment; see CONTRIBUTING.md and the black-box tests.)
+root="$(git rev-parse --show-toplevel)"
+node "$root/scripts/build-llms.mjs" >/dev/null 2>&1 || exit 0
+# stage only the generated llms files if they changed
+git add -- \
+  "$root/docs/llms.txt" "$root/docs/llms-full.txt" \
+  "$root/packages/apick/llms.txt" "$root/packages/apick/llms-full.txt" \
+  "$root/packages/cms/llms.txt" "$root/packages/cms/llms-full.txt" 2>/dev/null
+exit 0

@@ -20,6 +20,21 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Write only when the content actually changed, so regenerating is a true
+// no-op on an unchanged tree (keeps git status clean, makes the git/Claude
+// hooks cost nothing when there's nothing to do).
+function writeIfChanged(abs, content) {
+  let current = '';
+  try {
+    current = readFileSync(abs, 'utf8');
+  } catch {
+    /* missing */
+  }
+  if (current === content) return false;
+  writeFileSync(abs, content);
+  return true;
+}
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(resolve(root, p), 'utf8');
 const version = (pkgPath) => JSON.parse(read(pkgPath)).version;
@@ -167,6 +182,7 @@ const outputs = [
 ];
 
 let stale = 0;
+let changed = 0;
 for (const [rel, content] of outputs) {
   const abs = resolve(root, rel);
   if (CHECK) {
@@ -180,8 +196,8 @@ for (const [rel, content] of outputs) {
       console.error(`STALE: ${rel} (run \`pnpm llms\`)`);
       stale++;
     }
-  } else {
-    writeFileSync(abs, content);
+  } else if (writeIfChanged(abs, content)) {
+    changed++;
   }
 }
 
@@ -192,5 +208,9 @@ if (CHECK) {
   }
   console.log('llms files are up to date.');
 } else {
-  console.log(`wrote ${outputs.length} llms files (core v${coreV}, cms v${cmsV}).`);
+  console.log(
+    changed > 0
+      ? `regenerated ${changed}/${outputs.length} llms files (core v${coreV}, cms v${cmsV}).`
+      : `llms files already current (core v${coreV}, cms v${cmsV}).`,
+  );
 }

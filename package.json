@@ -10,7 +10,8 @@
     "test": "pnpm build && pnpm --filter @apick/blackbox test",
     "typecheck": "pnpm -r typecheck",
     "llms": "node scripts/build-llms.mjs",
-    "llms:check": "node scripts/build-llms.mjs --check"
+    "llms:check": "node scripts/build-llms.mjs --check",
+    "prepare": "git config core.hooksPath scripts/hooks 2>/dev/null || true"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
