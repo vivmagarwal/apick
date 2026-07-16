@@ -53,5 +53,14 @@
     "ai",
     "framework"
   ],
-  "author": "Vivek M Agarwal"
+  "author": "Vivek M Agarwal",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vivmagarwal/apick.git",
+    "directory": "packages/apick"
+  },
+  "homepage": "https://github.com/vivmagarwal/apick/tree/main/packages/apick#readme",
+  "bugs": {
+    "url": "https://github.com/vivmagarwal/apick/issues"
+  }
 }
