@@ -1,4 +1,4 @@
-# @apick/core v0.5.3 — complete API guide (generated from docs/guides)
+# @apick/core v0.6.0 — complete API guide (generated from docs/guides)
 
 This file is GENERATED from docs/guides by scripts/build-llms.mjs — do not edit by hand.
 It is deterministic, version-stamped, and regenerated on every build (`pnpm llms`).
@@ -87,8 +87,10 @@ meta: /health /health/ready /openapi.json /llms.txt /llms-full.txt /mcp
 
 Operators: `$eq $ne $gt $gte $lt $lte $in $nin $contains $icontains $startsWith
 $endsWith $null`. Combinators: `$and $or $not`. Shorthand: `{"title":"x"}` = `$eq`.
-Only fields that exist AND that you may read are accepted — anything else is
-rejected at plan time (private fields are indistinguishable from unknown ones).
+`$contains` on a list of text/enum (or a to-many relation) is exact membership:
+`{"tags":{"$contains":"borders"}}`. Only fields that exist AND that you may read
+are accepted — anything else is rejected at plan time (private fields are
+indistinguishable from unknown ones).
 
 ```
 ?filter={"$or":[{"views":{"$gt":100}},{"title":{"$startsWith":"Hello"}}]}&sort=-views
@@ -373,10 +375,13 @@ GET /v1/collections/articles/docs
 | `$contains` `$icontains` `$startsWith` `$endsWith` | text, enum | LIKE metacharacters are escaped — always literal |
 | `$null` | any filterable | `{"$null": true|false}` |
 | `$contains` | to-many relations | membership: `{"related":{"$contains":"<docId>"}}` |
+| `$contains` | lists of text/enum | membership: `{"tags":{"$contains":"borders"}}` — exact item match, not substring |
 | `$and` `$or` `$not` | combinators | nest freely within the node budget |
 
-Nested object fields use dotted paths: `{"seo.metaTitle": {"$eq": "x"}}`.
-`json`, `list`, `blocks` and `object` fields are not filterable as a whole.
+Nested object fields use dotted paths: `{"seo.metaTitle": {"$eq": "x"}}` — that
+includes lists nested in objects (`{"meta.keywords":{"$contains":"x"}}`).
+`json`, `blocks`, `object` fields and lists of objects are not filterable as a
+whole; scalar lists accept only `$contains` and `$null`.
 System sorts: `createdAt`, `updatedAt`, `publishedAt`, `docId`.
 
 ## The planner is the security boundary

@@ -128,7 +128,10 @@ interface FilterState {
 
 function compilePredicate(plan: PlanContext, state: FilterState, path: string, predicate: unknown): SqlFragment {
   const def = resolveFilterField(plan, path, { allowPrivate: state.allowPrivate });
-  if (['json', 'object', 'list', 'blocks'].includes(def.type)) {
+  // Lists of text/enum scalars support membership ($contains/$null) below,
+  // exactly like to-many relations; other composite types are not filterable.
+  const isScalarList = def.type === 'list' && def.of !== undefined && ['text', 'enum'].includes(def.of.type);
+  if (['json', 'object', 'blocks'].includes(def.type) || (def.type === 'list' && !isScalarList)) {
     throw errors.planRejected(`Field "${path}" is not filterable`, { field: path });
   }
   const isManyRelation = def.type === 'relation' && def.many === true;
@@ -144,7 +147,7 @@ function compilePredicate(plan: PlanContext, state: FilterState, path: string, p
     state.nodes++;
     if (state.nodes > MAX_FILTER_NODES) throw errors.planRejected('Filter too large');
 
-    if (isManyRelation) {
+    if (isManyRelation || isScalarList) {
       if (op === '$contains') {
         if (typeof raw !== 'string') throw errors.planRejected(`Invalid value for "${path}"`);
         frags.push(sql`jsonb_exists(${sql.raw(`${plan.dataColumn} #> ${jsonPathLiteral(path)}`)}, ${raw})`);
@@ -154,7 +157,9 @@ function compilePredicate(plan: PlanContext, state: FilterState, path: string, p
         frags.push(sql.raw(`(${plan.dataColumn} #>> ${jsonPathLiteral(path)}) is ${raw === false ? 'not ' : ''}null`));
         continue;
       }
-      throw errors.planRejected(`Operator ${op} is not supported on to-many relation "${path}"`);
+      throw errors.planRejected(
+        `Operator ${op} is not supported on ${isManyRelation ? 'to-many relation' : 'list field'} "${path}"`,
+      );
     }
 
     const expr = fieldExpr(plan, path, def);
