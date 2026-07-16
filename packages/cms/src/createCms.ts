@@ -22,6 +22,7 @@ import { passwordVersion, resolveCmsSecret, verifySession } from './auth/session
 import { adminRoutes } from './admin/routes.js';
 import { mediaRoutes, DEFAULT_MEDIA_OPTIONS, type MediaStorage } from './media/routes.js';
 import { siteRoutes } from './site/routes.js';
+import { previewRoutes, type PreviewConfig } from './site/preview.js';
 import { defaultTheme } from './site/default-theme.js';
 import { configureMarkdown, mergeTheme, type PartialTheme } from './site/theme.js';
 
@@ -55,6 +56,8 @@ export interface CmsConfig
   content?: { sanitize?: boolean };
   /** Child-theme overrides on the default theme, or a whole different theme. */
   theme?: PartialTheme;
+  /** Draft preview: map a document to its site path (defaults cover pages+posts). */
+  preview?: PreviewConfig;
   plugins?: CmsPlugin[];
   session?: { ttlHours?: number; secret?: string };
   /** Extra routes, same as core's extend (runs before the site catch-all). */
@@ -158,6 +161,7 @@ export async function createCms(config: CmsConfig = {}): Promise<CmsApp> {
       usersRoutes(hono, box);
       mediaRoutes(hono, box, mediaOptions);
       adminRoutes(hono);
+      previewRoutes(hono as never, box, config.preview);
       for (const plugin of plugins) plugin.routes?.(hono, core);
       userExtend?.(hono, core);
       // the themable site owns everything that's left — register it LAST

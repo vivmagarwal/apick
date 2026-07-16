@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { defaultTheme, defineCollection, f, html, type CmsPlugin } from '@apick/cms';
-import { bootCms, seedAdmin, loginViaUi, apiFetch, ADMIN, type RunningCms } from './fixtures.js';
+import { bootCms, mainNav, pickOption, seedAdmin, loginViaUi, apiFetch, ADMIN, type RunningCms } from './fixtures.js';
 
 /**
  * BROWSER PROMISE: themable like WordPress, extensible like Drupal — a child
@@ -74,14 +74,14 @@ test.describe('themes & plugins', () => {
 
   test('plugin collection appears in the admin and works in the editor', async ({ page }) => {
     await loginViaUi(page, cms.url, ADMIN.email, ADMIN.password);
-    await expect(page.locator('[data-nav=projects]')).toBeVisible();
+    await expect(mainNav(page).getByRole('link', { name: 'projects' })).toBeVisible();
     // plugin admin-nav link present
-    await expect(page.locator('nav a[href="https://example.com/docs"]')).toBeVisible();
+    await expect(mainNav(page).locator('a[href="https://example.com/docs"]')).toBeVisible();
 
-    await page.locator('[data-nav=projects]').click();
+    await mainNav(page).getByRole('link', { name: 'projects' }).click();
     await page.locator('[data-action=new]').click();
     await page.locator('[data-input=name]').fill('APIck CMS');
-    await page.locator('[data-input=stage]').selectOption('building');
+    await pickOption(page, '[data-input=stage]', 'building');
     await page.locator('[data-input=repoUrl]').fill('https://github.com/vivmagarwal/apick');
     await page.locator('[data-action=publish]').click();
     await expect(page.locator('[data-status=published]')).toBeVisible();

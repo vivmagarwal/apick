@@ -29,6 +29,7 @@ export interface DocRow {
   created_at: Date;
   updated_at: Date;
   published_at: Date | null;
+  scheduled_publish_at: Date | null;
   created_by: string | null;
 }
 
@@ -42,6 +43,8 @@ export interface DocEnvelope {
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
+  /** When a future publish is scheduled (cluster-single-fire), else null. */
+  scheduledPublishAt: string | null;
   data: Record<string, unknown>;
 }
 
@@ -88,6 +91,7 @@ export function toEnvelope(col: CompiledCollection, row: DocRow, status: 'draft'
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     publishedAt: row.published_at ? row.published_at.toISOString() : null,
+    scheduledPublishAt: row.scheduled_publish_at ? row.scheduled_publish_at.toISOString() : null,
     data: redactPrivate(col, data),
   };
 }
@@ -312,7 +316,8 @@ async function publishInTx(tx: Queryable, col: CompiledCollection, ctx: StoreCon
   await tx.query(sql`
     update apick_docs
     set published_version_id = draft_version_id, published_version = draft_version,
-        published_data = draft_data, published_at = now(), updated_at = now()
+        published_data = draft_data, published_at = now(), updated_at = now(),
+        scheduled_publish_at = null
     where tenant_id = ${ctx.tenantId} and collection = ${col.key} and doc_id = ${docId} and locale = ${locale}
   `);
   await rewriteEdges(tx, col, ctx.tenantId, docId, locale, 'published', row.draft_data);
@@ -330,13 +335,86 @@ export async function publishDoc(db: Db, col: CompiledCollection, ctx: StoreCont
   });
 }
 
+/** Schedule a future publish (replaces any existing schedule for the doc). */
+export async function schedulePublish(db: Db, col: CompiledCollection, ctx: StoreContext, docId: string, at: Date, locale = DEFAULT_LOCALE): Promise<DocEnvelope> {
+  if (!(at instanceof Date) || Number.isNaN(at.getTime())) throw errors.badRequest('"at" must be a valid datetime');
+  if (at.getTime() <= Date.now()) throw errors.badRequest('"at" must be in the future (omit it to publish now)');
+  return db.transaction(async (tx) => {
+    const row = await loadHead(tx, ctx.tenantId, col.key, docId, locale, true);
+    if (!row) throw errors.notFound(`Document not found`);
+    await tx.query(sql`
+      update apick_docs set scheduled_publish_at = ${at.toISOString()}, updated_at = now()
+      where tenant_id = ${ctx.tenantId} and collection = ${col.key} and doc_id = ${docId} and locale = ${locale}
+    `);
+    await emit(tx, ctx, 'doc.publish_scheduled', { collection: col.key, docId, locale }, { at: at.toISOString(), version: row.draft_version });
+    return toEnvelope(col, (await loadHead(tx, ctx.tenantId, col.key, docId, locale))!, 'draft');
+  });
+}
+
+export async function cancelScheduledPublish(db: Db, col: CompiledCollection, ctx: StoreContext, docId: string, locale = DEFAULT_LOCALE): Promise<DocEnvelope> {
+  return db.transaction(async (tx) => {
+    const row = await loadHead(tx, ctx.tenantId, col.key, docId, locale, true);
+    if (!row) throw errors.notFound(`Document not found`);
+    await tx.query(sql`
+      update apick_docs set scheduled_publish_at = null, updated_at = now()
+      where tenant_id = ${ctx.tenantId} and collection = ${col.key} and doc_id = ${docId} and locale = ${locale}
+    `);
+    if (row.scheduled_publish_at) {
+      await emit(tx, ctx, 'doc.publish_schedule_cancelled', { collection: col.key, docId, locale }, { was: row.scheduled_publish_at.toISOString() });
+    }
+    return toEnvelope(col, (await loadHead(tx, ctx.tenantId, col.key, docId, locale))!, 'draft');
+  });
+}
+
+/**
+ * Publish everything whose schedule has come due. Runs on the internal cron
+ * (cluster-single-fire); FOR UPDATE SKIP LOCKED makes concurrent sweeps safe.
+ * Each document publishes through the normal path — same events, same
+ * webhook fan-out, attributed to the system actor.
+ */
+export async function sweepScheduledPublishes(
+  db: Db,
+  resolveCol: (key: string) => CompiledCollection | null,
+  mkCtx: (tenantId: string) => StoreContext,
+): Promise<number> {
+  let published = 0;
+  // small batches so one bad doc can't wedge the sweep
+  for (;;) {
+    const done = await db.transaction(async (tx) => {
+      const { rows } = await tx.query<{ tenant_id: string; collection: string; doc_id: string; locale: string }>(sql`
+        select tenant_id, collection, doc_id, locale from apick_docs
+        where scheduled_publish_at is not null and scheduled_publish_at <= now()
+        order by scheduled_publish_at limit 20 for update skip locked
+      `);
+      if (rows.length === 0) return true;
+      for (const row of rows) {
+        const col = resolveCol(row.collection);
+        if (!col) {
+          // collection no longer defined — clear the orphan schedule
+          await tx.query(sql`
+            update apick_docs set scheduled_publish_at = null
+            where tenant_id = ${row.tenant_id} and collection = ${row.collection} and doc_id = ${row.doc_id} and locale = ${row.locale}
+          `);
+          continue;
+        }
+        await publishInTx(tx, col, mkCtx(row.tenant_id), row.doc_id, row.locale);
+        published++;
+      }
+      return rows.length < 20;
+    });
+    if (done) break;
+  }
+  return published;
+}
+
 export async function unpublishDoc(db: Db, col: CompiledCollection, ctx: StoreContext, docId: string, locale = DEFAULT_LOCALE): Promise<DocEnvelope> {
   return db.transaction(async (tx) => {
     const row = await loadHead(tx, ctx.tenantId, col.key, docId, locale, true);
     if (!row) throw errors.notFound(`Document not found`);
     await tx.query(sql`
       update apick_docs
-      set published_version_id = null, published_version = null, published_data = null, published_at = null, updated_at = now()
+      set published_version_id = null, published_version = null, published_data = null, published_at = null,
+          scheduled_publish_at = null, updated_at = now()
       where tenant_id = ${ctx.tenantId} and collection = ${col.key} and doc_id = ${docId} and locale = ${locale}
     `);
     await tx.query(sql`

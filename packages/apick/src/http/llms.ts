@@ -103,7 +103,8 @@ MCP (/mcp), or webhooks. There is no admin UI by design.
 
 - Create: \`POST /v1/collections/{c}/docs\` body \`{"data": {...}, "publish": true|false, "locale": "..."}\`
 - Update: \`PATCH /v1/collections/{c}/docs/{docId}\` body \`{"patch": {...}, "ifVersion": n}\`
-- Publish/unpublish: \`POST .../docs/{docId}/publish\` | \`/unpublish\`
+- Publish/unpublish: \`POST .../docs/{docId}/publish\` | \`/unpublish\`; schedule with body \`{"at":"<iso>"}\`, cancel via \`DELETE .../publish-schedule\`
+- Search: \`GET .../docs?search=<websearch query>\` (ranked FTS) and \`GET /v1/search?q=...&collections=a,b\` across collections
 - Delete: \`DELETE .../docs/{docId}\` (all locales) or \`?locale=xx\` (one variant)
 - Relations are docId strings (to-one) or arrays of docId strings (to-many); targets must exist.
 

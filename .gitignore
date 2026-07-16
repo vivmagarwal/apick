@@ -23,3 +23,5 @@ coverage/
 
 # transient publish auth (never commit)
 .npmrc
+*.apick-lock
+tests/browser/test-results/

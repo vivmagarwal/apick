@@ -1,4 +1,4 @@
-# @apick/core v0.7.0
+# @apick/core v0.8.0
 
 > Pure-headless, AI-first application platform for Node.js + Postgres. One
 > TypeScript schema definition produces a validated REST API, RBAC,

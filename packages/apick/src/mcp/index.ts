@@ -95,6 +95,23 @@ function buildTools(core: AppCore): ToolDef[] {
       },
     },
     {
+      name: 'search_content',
+      description:
+        'Full-text search across collections (ranked, websearch syntax: quoted phrases, OR, -exclusions). ' +
+        'Searches every readable collection unless "collections" narrows it.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'What to search for (min 2 chars)' },
+          collections: { type: 'array', items: { type: 'string' }, description: 'Restrict to these collection keys' },
+          status: COMMON_PROPS.status,
+          pageSize: { type: 'integer', minimum: 1, maximum: 25, description: 'Hits per collection (default 10)' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+    },
+    {
       name: 'create_document',
       description: 'Create a document (draft by default). "data" must match the collection writeSchema from list_collections.',
       inputSchema: {
@@ -272,6 +289,27 @@ async function callTool(core: AppCore, ctx: AccessContext, name: string, args: A
         ...(args['count'] === true ? { count: true } : {}),
         locale,
       });
+    }
+    case 'search_content': {
+      const q = argStr(args, 'query');
+      const status = args['status'] === 'draft' ? ('draft' as const) : ('published' as const);
+      const pageSize = typeof args['pageSize'] === 'number' ? Math.min(Math.max(args['pageSize'], 1), 25) : 10;
+      const requested = Array.isArray(args['collections']) ? (args['collections'] as string[]) : [];
+      const candidates = core.registry
+        .list()
+        .filter((col) => (requested.length === 0 ? true : requested.includes(col.key)))
+        .filter((col) => can(ctx, status === 'draft' ? 'readDraft' : 'read', `doc:${col.key}`));
+      const groups = await Promise.all(
+        candidates.map(async (col) => {
+          try {
+            const result = await listDocs(core.db, core.registry, ctx, col.key, { search: q, status, pageSize, locale });
+            return { collection: col.key, hits: result.data };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      return { results: groups.filter((g) => g !== null && g.hits.length > 0), query: q };
     }
     case 'get_document': {
       const collection = argStr(args, 'collection');

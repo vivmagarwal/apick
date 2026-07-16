@@ -3,6 +3,60 @@
 All notable changes to the APIck packages. Semver applies pre-1.0 as:
 breaking API changes bump the minor.
 
+## @apick/core 0.8.0 — 2026-07-16
+
+The authoring release (see ADR 0003) — presentation-free primitives that
+schema-driven UIs (the new admin, MCP agents) build on:
+
+- **Admin hints on collections**: `defineCollection(key, { admin: { label,
+  icon, titleField, orderField } })` — pure data, validated against fields,
+  carried through `/v1/collections` and schema introspection.
+- **Inverse relations**: `/v1/collections/:key/schema` returns `referencedBy`
+  (who points at this collection, with which field) — what document-centric
+  UIs need to show "everything attached to this page".
+- **Scheduled publishing**: `POST …/publish {"at":"<iso>"}` schedules,
+  `DELETE …/publish-schedule` cancels, envelopes carry `scheduledPublishAt`;
+  due schedules publish through the normal path (events + webhooks) via a
+  cluster-single-fire sweep. Migration 4 (`scheduled_publish_at`).
+- **Full-text search**: `?search=` on listings + `GET /v1/search?q=` across
+  collections + the `search_content` MCP tool — ranked Postgres websearch
+  over non-private text fields, planner-scoped like every read.
+- **Draft preview scope**: `runWithDraftPreview(docId, fn)` — inside the
+  scope, that ONE document's draft head impersonates its published head
+  across list/get reads, so any theme previews drafts unchanged.
+- **Content as files**: `apick content push|pull|check <dir> --app ./app.js`
+  — idempotent upserts keyed by each collection's unique field, relations by
+  human key, publish policy that never unpublishes, offline validation.
+- **Root key lifecycle**: `apick key rotate-root` (mint new, revoke old —
+  works with the key lost) and `apick key list` (labels, never tokens).
+- `app.listen()` with no args honors PaaS `PORT`/`HOST` envs (binds 0.0.0.0
+  when PORT is injected; explicit args win).
+
+## @apick/cms 0.3.0 — 2026-07-16
+
+The admin people should love (ADR 0003):
+
+- **Admin v2** — rebuilt on React + TypeScript + Tailwind + shadcn-style
+  components: schema-driven editor for every field type, relation pickers
+  with debounced search + create-in-place, **related-content panels** (see /
+  reorder / edit-in-a-drawer / unlink / add everything that points at a
+  document — Drupal Inline-Entity-Form-class), listings with cross-field +
+  full-text search, status filters and bulk actions, publish split-button
+  with **Schedule…**, draft **Preview**, version history, ⌘K command
+  palette, read-only schema inspector, media library. Still a pure client of
+  the public API — anything the admin does, an agent can do with a token.
+- **Draft preview URLs**: the Preview button mints a 30-minute signed
+  single-document URL rendered through the real theme (custom routes
+  included) with a draft banner + noindex; map documents to pages with
+  `preview.pathFor` (pages/posts mapped out of the box).
+- **Media image variants**: `GET /media/:id/:file?w=320|480|960|1600`
+  (allow-list) resizes on first request via optional `sharp` and stores the
+  derivative; without sharp the original serves with `x-apick-variant:
+  unavailable` — never a 500.
+- **"barebones" default theme**: minimal opinionated black & white (zinc,
+  Inter, hairline borders, dark-mode aware, zero JS) replacing "quiet" — a
+  clean sheet real sites extend or replace.
+
 ## @apick/core 0.7.0 — 2026-07-16
 
 - **Schema isolation: many APIck apps in one database.** New `databaseSchema`

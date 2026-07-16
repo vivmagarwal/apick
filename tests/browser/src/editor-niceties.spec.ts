@@ -31,6 +31,12 @@ test.describe('editor niceties', () => {
     await slug.fill('custom-slug');
     await page.locator('[data-input=title]').fill('A Totally Different Title');
     await expect(slug).toHaveValue('custom-slug');
+
+    // the Regenerate button re-derives from the title and resumes tracking
+    await page.locator('[data-action="regenerate:slug"]').click();
+    await expect(slug).toHaveValue('a-totally-different-title');
+    await page.locator('[data-input=title]').fill('Final Title');
+    await expect(slug).toHaveValue('final-title');
   });
 
   test('drafts autosave after edits, with a visible status', async ({ page }) => {

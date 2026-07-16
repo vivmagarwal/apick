@@ -1,4 +1,4 @@
-# @apick/cms v0.2.5
+# @apick/cms v0.3.0
 
 > A full, themable, WordPress-class CMS built on @apick/core: a schema-driven
 > admin UI, users & sessions, a media library, an edodo-write markdown editor,

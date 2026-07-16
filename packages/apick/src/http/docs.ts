@@ -3,6 +3,7 @@ import { errors } from '../kernel/errors.js';
 import { assertCan, assertFieldsWritable } from '../auth/rbac.js';
 import { storeContextFor } from '../app/core.js';
 import {
+  cancelScheduledPublish,
   createDoc,
   deleteDoc,
   getVersion,
@@ -10,6 +11,7 @@ import {
   patchDoc,
   publishDoc,
   restoreVersion,
+  schedulePublish,
   unpublishDoc,
 } from '../content/store.js';
 import { getDoc, listDocs, type ListParams } from '../query/plan.js';
@@ -27,6 +29,7 @@ export function parseListParams(query: Record<string, string | undefined>, defau
     }
   }
   if (query['sort']) params.sort = query['sort'];
+  if (query['search']) params.search = query['search'];
   if (query['page']) {
     const n = Number.parseInt(query['page'], 10);
     if (!Number.isInteger(n) || n < 1) throw errors.badRequest('page must be a positive integer');
@@ -160,7 +163,7 @@ export function docRoutes(): Hono<HonoEnv> {
     return c.json({ data: result });
   });
 
-  // publish / unpublish
+  // publish / unpublish — POST body may carry {"at": "<iso datetime>"} to schedule
   app.post('/:collection/docs/:docId/publish', async (c) => {
     const core = c.get('core');
     const ctx = c.get('access');
@@ -168,7 +171,36 @@ export function docRoutes(): Hono<HonoEnv> {
     assertCan(ctx, 'publish', `doc:${collection}`);
     const col = core.registry.get(collection).compiled;
     const locale = parseLocale(c.req.query('locale'), core.config.defaultLocale);
-    const doc = await publishDoc(core.db, col, storeContextFor(ctx, core), c.req.param('docId'), locale);
+    let at: Date | null = null;
+    const raw = await c.req.text();
+    if (raw.trim() !== '') {
+      let body: unknown;
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        throw errors.badRequest('Request body must be valid JSON');
+      }
+      const atValue = (body as Record<string, unknown>)['at'];
+      if (atValue !== undefined) {
+        if (typeof atValue !== 'string') throw errors.badRequest('"at" must be an ISO datetime string');
+        at = new Date(atValue);
+      }
+    }
+    const doc = at
+      ? await schedulePublish(core.db, col, storeContextFor(ctx, core), c.req.param('docId'), at, locale)
+      : await publishDoc(core.db, col, storeContextFor(ctx, core), c.req.param('docId'), locale);
+    return c.json({ data: doc });
+  });
+
+  // cancel a scheduled publish
+  app.delete('/:collection/docs/:docId/publish-schedule', async (c) => {
+    const core = c.get('core');
+    const ctx = c.get('access');
+    const collection = c.req.param('collection');
+    assertCan(ctx, 'publish', `doc:${collection}`);
+    const col = core.registry.get(collection).compiled;
+    const locale = parseLocale(c.req.query('locale'), core.config.defaultLocale);
+    const doc = await cancelScheduledPublish(core.db, col, storeContextFor(ctx, core), c.req.param('docId'), locale);
     return c.json({ data: doc });
   });
 

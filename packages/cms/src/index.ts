@@ -8,6 +8,7 @@ export { mediaUrl, MEDIA_COLLECTION, type MediaStorage } from './media/routes.js
 export { defineTheme, mergeTheme, md, configureMarkdown, type Theme, type PartialTheme, type BlockRenderer } from './site/theme.js';
 export { renderMarkdown } from './site/sanitize.js';
 export { defaultTheme } from './site/default-theme.js';
+export { defaultPathFor, type PreviewConfig } from './site/preview.js';
 export { html, raw, escapeHtml, RawHtml } from './site/html.js';
 
 // re-export the core schema DSL so CMS apps need one import

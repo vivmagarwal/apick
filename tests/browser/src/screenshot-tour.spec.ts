@@ -1,5 +1,5 @@
 import { test } from '@playwright/test';
-import { bootCms, seedAdmin, loginViaUi, ADMIN } from './fixtures.js';
+import { addBlock, bootCms, seedAdmin, loginViaUi, ADMIN } from './fixtures.js';
 
 /**
  * Not an assertion suite — a visual QA tour. Runs only when SHOTS_DIR is set:
@@ -64,7 +64,7 @@ test.describe('screenshot tour', () => {
     await shot('04-editor');
     await page.goto(`${cms.url}/admin/c/pages/new`);
     await page.waitForSelector('[data-view=editor]');
-    await page.locator('[data-add=body]').selectOption('hero');
+    await addBlock(page, 'body', 'hero');
     await page.waitForTimeout(300);
     await shot('05-blocks');
     // media library with an upload
@@ -78,6 +78,7 @@ test.describe('screenshot tour', () => {
       { name: 'sunset.png', mimeType: 'image/png', buffer: PNG },
       { name: 'recipe-card.png', mimeType: 'image/png', buffer: PNG },
     ]);
+    await page.waitForSelector('[data-media="sunset.png"]');
     await page.waitForTimeout(500);
     await shot('06-media');
     await page.goto(`${cms.url}/admin/users`);

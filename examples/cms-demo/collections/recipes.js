@@ -2,6 +2,7 @@ import { defineCollection, f } from '@apick/cms';
 
 export const recipes = defineCollection('recipes', {
   description: 'Cooking recipes',
+  admin: { label: 'Recipes', icon: '🍳', titleField: 'name' },
   access: { publicRead: true },
   fields: {
     name: f.text({ required: true }),

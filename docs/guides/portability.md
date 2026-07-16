@@ -1,7 +1,7 @@
 # Data portability
 
 No lock-in is a behavioural guarantee, tested end-to-end
-(`portability.test.ts`).
+(`portability.test.ts`, `content-cli.test.ts`).
 
 ## Export / import
 
@@ -34,3 +34,36 @@ from apick_docs where collection = 'articles';
 
 `pg_dump` is always a complete, restorable backup. Nothing is encoded in
 proprietary blobs; deleting APIck leaves you with clean relational data.
+
+## Content as files (`apick content`)
+
+Keep authored content in git as markdown + json and sync it with the CLI:
+
+```bash
+npx apick content push  ./content --app ./schema.js [--database url] [--schema name]
+npx apick content pull  ./content --app ./schema.js [--database url] [--schema name]
+npx apick content check ./content --app ./schema.js        # validate only, exit 1 on problems
+```
+
+Layout inside the directory (`--app` is a module exporting `collections`):
+
+- `<collection-key>/*.md` — frontmatter (a strict YAML subset: `key: value`
+  scalars and `- item` string lists) holds the fields; the markdown body fills
+  the collection's first `f.markdown()` field.
+- `<collection-key>.json` — an array of data objects, for collections without
+  a markdown field.
+
+Semantics, all covered by `content-cli.test.ts`:
+
+- **Upsert identity** is the collection's first `unique: true` field — a
+  collection needs one to take part.
+- **Idempotent**: unchanged documents are untouched; a changed file becomes a
+  new draft version (+ re-publish if published). `publish: false` in
+  frontmatter keeps a doc as draft; documents are **never auto-unpublished** —
+  an admin's unpublish decision beats the files.
+- **Relations by human key**: a relation value that isn't a UUID is resolved
+  through the target collection's unique field (`author: Ada`), in two passes
+  so in-directory references work regardless of file order.
+- **Round-trip stable**: `pull` writes the same conventions back (sorted
+  frontmatter keys, relations as human keys), so `pull` → `push` reports
+  everything unchanged.

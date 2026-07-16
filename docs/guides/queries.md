@@ -32,6 +32,22 @@ includes lists nested in objects (`{"meta.keywords":{"$contains":"x"}}`).
 whole; scalar lists accept only `$contains` and `$null`.
 System sorts: `createdAt`, `updatedAt`, `publishedAt`, `docId`.
 
+## Full-text search
+
+Ranked search rides the same planner (authorization, tenancy, bounded reads):
+
+```
+GET /v1/collections/articles/docs?search=sovereign statehood    # one collection
+GET /v1/search?q=sovereignty&collections=articles,cases         # across collections
+```
+
+- Postgres `websearch_to_tsquery` syntax: quoted "phrases", OR, -exclusions.
+- Searches every non-private top-level text/markdown field the caller may read;
+  results rank by `ts_rank` (explicit `sort` overrides).
+- Anonymous callers search published heads of `publicRead` collections only;
+  `status=draft` needs readDraft. Collections with no searchable fields are
+  skipped. MCP exposes the same as the `search_content` tool.
+
 ## The planner is the security boundary
 
 A filter/sort/populate may reference only fields that (a) exist in the schema

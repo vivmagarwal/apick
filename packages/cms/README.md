@@ -21,23 +21,29 @@ account. That's the install.
 
 ## What's in the box
 
-- **Schema-driven admin UI** (`/admin`): listings with search + status,
-  an editor generated for every field type — text, markdown, numbers,
-  booleans, dates, enums, JSON, nested objects, lists, relations, and
-  composable **blocks** with reordering. Draft → publish workflow
-  (`draft / modified / published`), version history with one-click restore,
-  users, API keys and webhooks management. No frontend build for you — the
-  SPA ships pre-bundled.
+- **Schema-driven admin UI** (`/admin`): an editor generated for every field
+  type — text, markdown, numbers, booleans, dates, enums, JSON, nested
+  objects, lists, relations, and composable **blocks** with reordering.
+  Relation pickers with live search and create-in-place; **related-content
+  panels** show everything that points at a document (its resources, its
+  tips, …) with reorder, edit-in-a-drawer, unlink and add-prefilled. Listings
+  with full-text search, status filters and bulk publish/unpublish/delete.
+  Draft → publish with **scheduling**, draft **preview** on the real site,
+  version history with one-click restore, a ⌘K command palette, a read-only
+  schema inspector, users, API keys and webhooks. No frontend build for you —
+  the SPA (React + Tailwind, shadcn-style) ships pre-bundled.
 - **Media library** (`/admin/media`): drag-and-drop upload, a browse grid, and
   a picker in every image field; files serve from `/media/:id/:filename` with
-  hardened headers. Bytes default to a zero-config Postgres blob store; bring
+  hardened headers and on-demand **image variants** (`?w=320|480|960|1600`,
+  optional sharp). Bytes default to a zero-config Postgres blob store; bring
   your own storage driver (S3, …) for large libraries.
 - **Modern markdown editor**: [edodo-write](https://github.com/vivmagarwal/edodo-write)
   Notion/Medium-style WYSIWYG with Markdown as the value, plus slug
   auto-generation and draft autosave.
-- **Themable server-rendered site** (`/`): pages + blog out of the box,
-  navigation from your pages, dark-mode aware, zero client JS. Themes are
-  code — override any template or block renderer, child-theme style.
+- **Themable server-rendered site** (`/`): pages + blog out of the box on the
+  minimal black-&-white "barebones" theme, navigation from your pages,
+  dark-mode aware, zero client JS. Themes are code — override any template or
+  block renderer, child-theme style.
 - **Real users & sessions**: email + password (scrypt, stored in a `private`
   field the API structurally cannot leak), signed sessions, password changes
   invalidate sessions, roles: admin / editor (content only — user-management

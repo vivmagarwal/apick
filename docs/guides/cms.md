@@ -27,20 +27,30 @@ await app.listen(3000);
 
 - **Content model**: `pages` (block-composed, `showInNav`) and `posts`
   (markdown blog). Disable with `defaultContent: false`.
-- **Admin UI** at `/admin`: dashboard, listings with search/status/pagination,
-  a schema-driven editor for every field type (text/markdown/number/boolean/
-  datetime/enum/json/objects/lists/relations/**blocks with reordering**),
-  draft→publish workflow with `draft/modified/published` states, version
-  history with restore, users, API keys, webhooks. Markdown fields use the
-  **edodo-write** Notion/Medium-style WYSIWYG editor (Markdown stays the value);
-  the title auto-fills the slug; drafts **autosave**.
+- **Admin UI** at `/admin` (React + Tailwind, shadcn-style; ships pre-bundled):
+  dashboard, listings with **full-text search**, status filters, sortable
+  columns and **bulk publish/unpublish/delete**; a schema-driven editor for
+  every field type (text/markdown/number/boolean/datetime/enum/json/objects/
+  lists/relations/**blocks with reordering**); **relation pickers** with live
+  search and create-in-place; **related-content panels** that list everything
+  pointing at the open document (reorder by drag, edit in a drawer, unlink,
+  add prefilled — driven by the schema's `referencedBy`); draft→publish with
+  **Schedule…** (publish at a future time) and draft **Preview** on the real
+  site; version history with restore; a **⌘K command palette** (jump to any
+  collection, search all content); a read-only **schema inspector**; users,
+  API keys, webhooks. Markdown fields use the **edodo-write**
+  Notion/Medium-style WYSIWYG editor (Markdown stays the value); the title
+  auto-fills the slug; drafts **autosave**. Name your collections for humans
+  with `admin` hints: `defineCollection('tips', { admin: { label: 'Chef
+  tips', icon: '💡', titleField: 'tip', orderField: 'order' }, … })`.
 - **Media library** at `/admin/media`: drag-and-drop / click upload, a browse
   grid, and a picker built into every image field. Files serve from
   `/media/:id/:filename` with hardened headers, and each upload is an ordinary
   `media` document (so listings, permissions, webhooks and MCP all apply).
-- **Site** at `/`: server-rendered by the theme — home, `/blog`,
-  `/blog/:slug`, `/:page-slug`, nav from pages, themed 404, dark-mode aware,
-  zero client JS.
+- **Site** at `/`: server-rendered by the built-in **"barebones"** theme —
+  minimal opinionated black & white (zinc + Inter + hairlines, dark-mode
+  aware, zero client JS): home, `/blog`, `/blog/:slug`, `/:page-slug`, nav
+  from pages, themed 404. A clean sheet meant to be extended or replaced.
 
 ## Project layout (the "yours vs not yours" rule)
 
@@ -83,6 +93,25 @@ export const recipes = defineCollection('recipes', {
   API principal; every action is attributed in the audit log.
 - Agents get scoped API keys from Settings → API keys (e.g. the `cms-editor`
   role) and drive the same content through MCP.
+
+## Draft preview
+
+Editors preview drafts on the REAL site before publishing: the admin's
+Preview button mints a 30-minute signed URL (`/preview?token=…`) that renders
+that one document's draft through your theme — default or fully custom routes,
+zero theme changes needed. Map documents to pages with:
+
+```js
+await createCms({
+  preview: {
+    pathFor: (collection, doc) =>
+      collection === 'recipes' ? `/recipes/${doc.data.slug}` : null,
+  },
+});
+```
+
+(`pages` and `posts` are mapped out of the box.) The token authorizes exactly
+one document; previews carry `noindex` and a visible draft banner.
 
 ## Theming
 
@@ -153,6 +182,16 @@ Use `f.image()` for URL fields that should show a media picker + preview
 (`coverImageUrl: f.image()`); it accepts app-relative `/media/…` URLs or any
 absolute URL. Public serving is hardened: `X-Content-Type-Options: nosniff`,
 a `sandbox` CSP, `inline` disposition, long-lived immutable caching + ETags.
+
+**Image width variants**: append `?w=320|480|960|1600` (allow-list only —
+any other value is a 400, as is `?w=` on a non-image) to a `/media/…` URL to
+get a resized copy: same format, never upscaled, derived once with
+[sharp](https://sharp.pixelplumbing.com) and stored back in the blob store,
+with the same hardened + immutable-cache headers (the URL is the cache key).
+sharp is an *optional* peer dependency — without it (and for GIFs, whose
+animation frames resizing would flatten) the original bytes serve instead
+with an `x-apick-variant: unavailable` (or `passthrough`) header, never a 500.
+Install it with `npm i sharp` to enable variants.
 
 ## The markdown editor
 
