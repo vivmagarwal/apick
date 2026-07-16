@@ -48,9 +48,11 @@ function publicUser(row: CmsUserRow): { docId: string; email: string; name: stri
   return { docId: row.doc_id, email: row.draft_data.email, name: row.draft_data.name, role: row.draft_data.role };
 }
 
-const loginLimiter = createRateLimiter(5, 60_000);
-
 export function authRoutes(app: Hono<HonoEnv>, box: { ctx: CmsContext | null }): void {
+  // Per-instance (not module-global): one CMS's login attempts must never
+  // rate-limit another's — important when several createCms run in one process.
+  const loginLimiter = createRateLimiter(5, 60_000);
+
   // Does this install need first-run setup? (public — the SPA routes on it)
   app.get('/admin/api/status', async (c) => {
     const ctx = requireCtx(box);

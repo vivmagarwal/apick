@@ -60,22 +60,35 @@ test.describe('screenshot tour', () => {
     };
     await page.goto(`${cms.url}/admin/c/posts/${posts.data[0]!.docId}`);
     await page.waitForSelector('[data-view=editor]');
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(700);
     await shot('04-editor');
     await page.goto(`${cms.url}/admin/c/pages/new`);
     await page.waitForSelector('[data-view=editor]');
     await page.locator('[data-add=body]').selectOption('hero');
     await page.waitForTimeout(300);
     await shot('05-blocks');
+    // media library with an upload
+    const PNG = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    await page.goto(`${cms.url}/admin/media`);
+    await page.waitForSelector('[data-view=media]');
+    await page.locator('[data-input="media-file"]').setInputFiles([
+      { name: 'sunset.png', mimeType: 'image/png', buffer: PNG },
+      { name: 'recipe-card.png', mimeType: 'image/png', buffer: PNG },
+    ]);
+    await page.waitForTimeout(500);
+    await shot('06-media');
     await page.goto(`${cms.url}/admin/users`);
     await page.waitForSelector('[data-view=users]');
-    await shot('06-users');
+    await shot('07-users');
     await page.goto(cms.url);
     await page.waitForTimeout(400);
-    await shot('07-site-home');
+    await shot('08-site-home');
     await page.goto(`${cms.url}/blog/sourdough`);
     await page.waitForTimeout(400);
-    await shot('08-site-post');
+    await shot('09-site-post');
     await cms.stop();
   });
 });

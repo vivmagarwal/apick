@@ -36,7 +36,7 @@ export interface FieldDef {
   minLength?: number;
   maxLength?: number;
   pattern?: string;
-  format?: 'markdown' | 'email' | 'uri' | 'slug';
+  format?: 'markdown' | 'email' | 'uri' | 'slug' | 'image';
   // enum
   values?: string[];
   // numbers
@@ -75,6 +75,8 @@ export const f = {
   markdown: <O extends TextOpts>(opts?: O) => make<string, O>({ type: 'text', format: 'markdown', ...opts }),
   email: <O extends TextOpts>(opts?: O) => make<string, O>({ type: 'text', format: 'email', ...opts }),
   uri: <O extends TextOpts>(opts?: O) => make<string, O>({ type: 'text', format: 'uri', ...opts }),
+  /** An image URL (absolute or app-relative like /media/…). UIs render a media picker. */
+  image: <O extends TextOpts>(opts?: O) => make<string, O>({ type: 'text', format: 'image', ...opts }),
   slug: <O extends TextOpts>(opts?: O) =>
     make<string, O>({ type: 'text', format: 'slug', pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', ...opts }),
   integer: <O extends NumOpts>(opts?: O) => make<number, O>({ type: 'integer', ...opts }),

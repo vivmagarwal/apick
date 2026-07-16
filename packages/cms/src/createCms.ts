@@ -13,13 +13,14 @@ import {
   type SavedQuery,
   type UserJobHandler,
 } from '@apick/core';
-import { cmsUsers, pages, posts, recentPosts, CMS_USERS_KEY } from './content.js';
+import { cmsUsers, media, pages, posts, recentPosts, CMS_USERS_KEY } from './content.js';
 import { createContextBox, type CmsContext } from './context.js';
 import { cmsRoleDefinitions, coreRoleForCmsRole } from './roles.js';
 import { authRoutes, findUserById } from './auth/routes.js';
 import { usersRoutes } from './auth/users-routes.js';
 import { passwordVersion, resolveCmsSecret, verifySession } from './auth/session.js';
 import { adminRoutes } from './admin/routes.js';
+import { mediaRoutes, DEFAULT_MEDIA_OPTIONS, type MediaStorage } from './media/routes.js';
 import { siteRoutes } from './site/routes.js';
 import { defaultTheme } from './site/default-theme.js';
 import { mergeTheme, type PartialTheme } from './site/theme.js';
@@ -46,6 +47,8 @@ export interface CmsConfig
   /** Include the opinionated pages+posts model (default true). */
   defaultContent?: boolean;
   site?: { title?: string; description?: string; postsPageSize?: number };
+  /** Media library: size/type limits and (optionally) your own storage driver (e.g. S3). */
+  media?: { maxFileSizeMB?: number; allowedTypes?: string[]; storage?: MediaStorage };
   /** Child-theme overrides on the default theme, or a whole different theme. */
   theme?: PartialTheme;
   plugins?: CmsPlugin[];
@@ -63,6 +66,7 @@ export async function createCms(config: CmsConfig = {}): Promise<CmsApp> {
   const plugins = config.plugins ?? [];
   const collections: Collection[] = [
     cmsUsers,
+    media,
     ...(config.defaultContent !== false ? [pages, posts] : []),
     ...(config.collections ?? []),
     ...plugins.flatMap((p) => p.collections ?? []),
@@ -111,12 +115,19 @@ export async function createCms(config: CmsConfig = {}): Promise<CmsApp> {
     };
   };
 
+  const mediaOptions = {
+    maxFileSizeMB: config.media?.maxFileSizeMB ?? DEFAULT_MEDIA_OPTIONS.maxFileSizeMB,
+    allowedTypes: config.media?.allowedTypes ?? DEFAULT_MEDIA_OPTIONS.allowedTypes,
+    storage: config.media?.storage ?? null,
+  };
+
   const {
     defaultContent: _dc,
     site: _site,
     theme: _theme,
     plugins: _plugins,
     session: _session,
+    media: _mediaCfg,
     extend: userExtend,
     collections: _cols,
     queries: _queries,
@@ -127,6 +138,8 @@ export async function createCms(config: CmsConfig = {}): Promise<CmsApp> {
 
   const app = await createApp({
     ...passthrough,
+    // uploads need headroom over the JSON default (multipart overhead is small)
+    maxBodyBytes: Math.max(passthrough.maxBodyBytes ?? 5 * 1024 * 1024, Math.ceil(mediaOptions.maxFileSizeMB * 1.2 * 1024 * 1024)),
     collections,
     queries,
     jobs,
@@ -137,6 +150,7 @@ export async function createCms(config: CmsConfig = {}): Promise<CmsApp> {
     extend: (hono, core) => {
       authRoutes(hono, box);
       usersRoutes(hono, box);
+      mediaRoutes(hono, box, mediaOptions);
       adminRoutes(hono);
       for (const plugin of plugins) plugin.routes?.(hono, core);
       userExtend?.(hono, core);

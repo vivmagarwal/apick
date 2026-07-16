@@ -20,6 +20,18 @@ export const cmsUsers = defineCollection(CMS_USERS_KEY, {
   },
 });
 
+export const media = defineCollection('media', {
+  description: 'Uploaded files (managed under Media; served at /media/:id/:filename)',
+  access: { publicRead: true },
+  fields: {
+    filename: f.text({ required: true, maxLength: 200 }),
+    alt: f.text({ maxLength: 300, description: 'Alt text for accessibility' }),
+    mime: f.text({ required: true, immutable: true }),
+    size: f.integer({ required: true, immutable: true }),
+    blobKey: f.text({ required: true, immutable: true, description: 'Storage key (managed by the CMS)' }),
+  },
+});
+
 export const pages = defineCollection('pages', {
   description: 'Standalone pages (about, contact, …) rendered by the theme',
   access: { publicRead: true },
@@ -30,7 +42,7 @@ export const pages = defineCollection('pages', {
     navOrder: f.integer({ default: 0 }),
     body: f.blocks({
       prose: { markdown: f.markdown({ required: true }) },
-      hero: { heading: f.text({ required: true }), subheading: f.text(), imageUrl: f.uri() },
+      hero: { heading: f.text({ required: true }), subheading: f.text(), imageUrl: f.image() },
       quote: { text: f.text({ required: true }), attribution: f.text() },
     }),
     seoDescription: f.text({ maxLength: 300 }),
@@ -46,7 +58,7 @@ export const posts = defineCollection('posts', {
     excerpt: f.text({ maxLength: 500 }),
     body: f.markdown({ required: true }),
     tags: f.list(f.text()),
-    coverImageUrl: f.uri(),
+    coverImageUrl: f.image(),
     publishDate: f.datetime({ description: 'Shown on the site; defaults to publish time' }),
   },
 });

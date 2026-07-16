@@ -1,6 +1,9 @@
 import { html } from 'htm/preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { EdodoWrite } from 'edodo-write';
 import { get, docLabel, loadCollections, type CollectionInfo, type FieldDef } from './api.js';
+import { MediaPicker, uploadFile, type MediaItem } from './media.js';
+import { registerMarkdownGetter, withFlushedMarkdown } from './flush.js';
 
 
 /**
@@ -48,9 +51,10 @@ function FieldInput(props: FieldProps): unknown {
   switch (def.type) {
     case 'text': {
       if (def.format === 'markdown') {
-        return html`<textarea data-input=${path} rows="10" class="mono"
-          value=${(value as string) ?? ''}
-          onInput=${(e: InputEvent) => set((e.target as HTMLTextAreaElement).value)}></textarea>`;
+        return html`<${MarkdownField} path=${path} value=${value} onChange=${set} />`;
+      }
+      if (def.format === 'image') {
+        return html`<${ImageField} path=${path} value=${value} onChange=${set} />`;
       }
       return html`<input data-input=${path} type=${def.format === 'email' ? 'email' : def.format === 'uri' ? 'url' : 'text'}
         value=${(value as string) ?? ''}
@@ -110,6 +114,81 @@ function FieldInput(props: FieldProps): unknown {
   }
 }
 
+/**
+ * Markdown editing via edodo-write (Notion/Medium-style, Markdown IS the
+ * value). The editor is created ONCE per mount (its registries resolve at
+ * construction); external value changes after mount are pushed with
+ * setMarkdown(silent). Pasted/dropped images upload to the media library.
+ */
+function MarkdownField({ path, value, onChange }: { path: string; value: unknown; onChange: (v: unknown) => void }): unknown {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<InstanceType<typeof EdodoWrite> | null>(null);
+  const valueRef = useRef<string>(typeof value === 'string' ? value : '');
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  useEffect(() => {
+    if (!hostRef.current) return;
+    const editor = new EdodoWrite(hostRef.current, {
+      value: valueRef.current,
+      // "fill" = full-width embedded composer (vs the centered document look).
+      layout: 'fill',
+      placeholder: 'Write… type “/” for blocks',
+      onChange: (md: string) => {
+        valueRef.current = md;
+        onChangeRef.current(md);
+      },
+      uploadImage: async (file: File) => {
+        const item = await uploadFile(file, file.name);
+        return { src: item.url, alt: item.alt || item.filename };
+      },
+    });
+    editorRef.current = editor;
+    return () => {
+      editor.destroy();
+      editorRef.current = null;
+    };
+  }, []);
+
+  // Register a synchronous getter under the CURRENT path so saves capture the
+  // latest text even inside edodo's ~120ms change debounce; re-registers when
+  // the path changes (e.g. a markdown block reordered).
+  useEffect(() => registerMarkdownGetter(path, () => editorRef.current?.getMarkdown() ?? ''), [path]);
+
+  // Reflect external resets (load, restore) without clobbering local typing.
+  useEffect(() => {
+    const incoming = typeof value === 'string' ? value : '';
+    if (editorRef.current && incoming !== valueRef.current) {
+      valueRef.current = incoming;
+      editorRef.current.setMarkdown(incoming, { silent: true });
+    }
+  }, [value]);
+
+  return html`<div class="markdown-field" data-input=${path} data-markdown=${path} ref=${hostRef}></div>`;
+}
+
+/** Image URL field with a media-library picker + preview. */
+function ImageField({ path, value, onChange }: { path: string; value: unknown; onChange: (v: unknown) => void }): unknown {
+  const [picking, setPicking] = useState(false);
+  const url = typeof value === 'string' ? value : '';
+  return html`<div class="image-field" data-input=${path}>
+    <div class="image-field-row">
+      <input type="text" data-input=${`${path}.url`} value=${url} placeholder="/media/… or https://…"
+        onInput=${(e: InputEvent) => onChange((e.target as HTMLInputElement).value || null)} />
+      <button type="button" class="btn btn-small" data-action="pick-media" onClick=${() => setPicking(true)}>Media…</button>
+      ${url && html`<button type="button" class="btn btn-small btn-ghost" onClick=${() => onChange(null)}>Clear</button>`}
+    </div>
+    ${url && html`<div class="image-preview"><img src=${url} alt="" /></div>`}
+    ${picking &&
+    html`<${MediaPicker}
+      onClose=${() => setPicking(false)}
+      onPick=${(item: MediaItem) => {
+        onChange(item.url);
+        setPicking(false);
+      }} />`}
+  </div>`;
+}
+
 function isoToLocal(value: unknown): string {
   if (typeof value !== 'string') return '';
   const date = new Date(value);
@@ -145,7 +224,12 @@ function JsonInput({ path, value, onChange }: FieldProps): unknown {
 function ListInput({ path, def, value, onChange, errors }: FieldProps): unknown {
   const items = Array.isArray(value) ? value : [];
   const itemDef = def.of ?? { type: 'text' };
-  const update = (i: number, v: unknown) => onChange(items.map((item, j) => (j === i ? v : item)));
+  // Same flush-before-structural-edit guard as blocks (in case of markdown list items).
+  const currentItems = (): unknown[] => {
+    const merged = withFlushedMarkdown({ [path]: items });
+    return Array.isArray(merged[path]) ? (merged[path] as unknown[]) : items;
+  };
+  const update = (i: number, v: unknown) => onChange(currentItems().map((item, j) => (j === i ? v : item)));
   const emptyItem = () => (itemDef.type === 'object' ? {} : '');
   return html`<div class="list-input" data-list=${path}>
     ${items.map(
@@ -155,10 +239,10 @@ function ListInput({ path, def, value, onChange, errors }: FieldProps): unknown 
             onChange=${(v: unknown) => update(i, v)} />
         </div>
         <button type="button" class="btn btn-ghost" title="Remove"
-          onClick=${() => onChange(items.filter((_, j) => j !== i))}>✕</button>
+          onClick=${() => onChange(currentItems().filter((_, j) => j !== i))}>✕</button>
       </div>`,
     )}
-    <button type="button" class="btn btn-small" data-add=${path} onClick=${() => onChange([...items, emptyItem()])}>+ Add item</button>
+    <button type="button" class="btn btn-small" data-add=${path} onClick=${() => onChange([...currentItems(), emptyItem()])}>+ Add item</button>
   </div>`;
 }
 
@@ -222,13 +306,24 @@ function RelationManyInput({ path, def, value, onChange }: FieldProps): unknown 
 function BlocksInput({ path, def, value, onChange, errors }: FieldProps): unknown {
   const blocks = Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
   const variants = def.variants ?? {};
+
+  // Reordering/removing a block can destroy a markdown editor whose latest
+  // text is still inside edodo's change debounce; flush every editor's current
+  // value into the block data FIRST, so structural edits never lose content.
+  const currentBlocks = (): Array<Record<string, unknown>> => {
+    const merged = withFlushedMarkdown({ [path]: blocks });
+    const out = merged[path];
+    return Array.isArray(out) ? (out as Array<Record<string, unknown>>) : blocks;
+  };
+
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
     if (j < 0 || j >= blocks.length) return;
-    const next = [...blocks];
+    const next = currentBlocks().slice();
     [next[i], next[j]] = [next[j]!, next[i]!];
     onChange(next);
   };
+  const removeBlock = (i: number) => onChange(currentBlocks().filter((_, j) => j !== i));
   return html`<div class="blocks" data-list=${path}>
     ${blocks.map((block, i) => {
       const type = block['__type'] as string;
@@ -240,19 +335,19 @@ function BlocksInput({ path, def, value, onChange, errors }: FieldProps): unknow
             <button type="button" class="btn btn-ghost" title="Move up" onClick=${() => move(i, -1)}>↑</button>
             <button type="button" class="btn btn-ghost" title="Move down" onClick=${() => move(i, 1)}>↓</button>
             <button type="button" class="btn btn-ghost" title="Remove"
-              onClick=${() => onChange(blocks.filter((_, j) => j !== i))}>✕</button>
+              onClick=${() => removeBlock(i)}>✕</button>
           </span>
         </div>
         ${Object.entries(shape).map(
           ([key, sub]) => html`<${Field} name=${key} path=${`${path}.${i}.${key}`} def=${sub} value=${block[key]} errors=${errors}
-            onChange=${(v: unknown) => onChange(blocks.map((b, j) => (j === i ? { ...b, [key]: v } : b)))} />`,
+            onChange=${(v: unknown) => onChange(currentBlocks().map((b, j) => (j === i ? { ...b, [key]: v } : b)))} />`,
         )}
       </div>`;
     })}
     <select class="add-block" data-add=${path} value=""
       onChange=${(e: Event) => {
         const type = (e.target as HTMLSelectElement).value;
-        if (type) onChange([...blocks, { __type: type }]);
+        if (type) onChange([...currentBlocks(), { __type: type }]);
         (e.target as HTMLSelectElement).value = '';
       }}>
       <option value="">+ Add block…</option>

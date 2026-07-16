@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { bootCms, seedAdmin, loginViaUi, ADMIN, type RunningCms } from './fixtures.js';
+import { bootCms, seedAdmin, loginViaUi, typeMarkdown, ADMIN, type RunningCms } from './fixtures.js';
 
 /**
  * BROWSER PROMISE: roles are real in the UI because they're real in the API —
@@ -46,7 +46,7 @@ test.describe('roles in the admin UI', () => {
     await page.locator('[data-action=new]').click();
     await page.locator('[data-input=title]').fill('Editor post');
     await page.locator('[data-input=slug]').fill('editor-post');
-    await page.locator('[data-input=body]').fill('words');
+    await typeMarkdown(page, 'body', 'words');
     await page.locator('[data-action=publish]').click();
     await expect(page.locator('[data-status=published]')).toBeVisible();
 

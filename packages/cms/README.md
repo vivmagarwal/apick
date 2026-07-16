@@ -21,6 +21,13 @@ account. That's the install.
   (`draft / modified / published`), version history with one-click restore,
   users, API keys and webhooks management. No frontend build for you — the
   SPA ships pre-bundled.
+- **Media library** (`/admin/media`): drag-and-drop upload, a browse grid, and
+  a picker in every image field; files serve from `/media/:id/:filename` with
+  hardened headers. Bytes default to a zero-config Postgres blob store; bring
+  your own storage driver (S3, …) for large libraries.
+- **Modern markdown editor**: [edodo-write](https://github.com/vivmagarwal/edodo-write)
+  Notion/Medium-style WYSIWYG with Markdown as the value, plus slug
+  auto-generation and draft autosave.
 - **Themable server-rendered site** (`/`): pages + blog out of the box,
   navigation from your pages, dark-mode aware, zero client JS. Themes are
   code — override any template or block renderer, child-theme style.

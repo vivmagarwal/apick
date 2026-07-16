@@ -1,7 +1,8 @@
 // @apick/cms — a full, themable CMS on top of @apick/core.
 
 export { createCms, type CmsApp, type CmsConfig, type CmsPlugin } from './createCms.js';
-export { cmsUsers, pages, posts, CMS_USERS_KEY } from './content.js';
+export { cmsUsers, pages, posts, media, CMS_USERS_KEY } from './content.js';
+export { mediaUrl, MEDIA_COLLECTION, type MediaStorage } from './media/routes.js';
 
 // theming
 export { defineTheme, mergeTheme, md, type Theme, type PartialTheme, type BlockRenderer } from './site/theme.js';

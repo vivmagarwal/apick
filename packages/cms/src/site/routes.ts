@@ -14,7 +14,7 @@ export interface SiteOptions {
   postsPageSize: number;
 }
 
-const RESERVED = new Set(['v1', 'mcp', 'admin', 'health', 'openapi.json', 'llms.txt', 'llms-full.txt', 'theme.css', 'blog', 'favicon.ico']);
+const RESERVED = new Set(['v1', 'mcp', 'admin', 'health', 'openapi.json', 'llms.txt', 'llms-full.txt', 'theme.css', 'blog', 'media', 'favicon.ico']);
 
 interface ListResponse {
   data: Array<{ docId: string; publishedAt: string | null; data: Record<string, unknown> }>;

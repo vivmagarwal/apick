@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { bootCms, seedAdmin, loginViaUi, ADMIN, type RunningCms } from './fixtures.js';
+import { bootCms, seedAdmin, loginViaUi, typeMarkdown, ADMIN, type RunningCms } from './fixtures.js';
 
 /**
  * BROWSER PROMISE: the schema-driven editor — a human writes, publishes,
@@ -24,9 +24,12 @@ test.describe('content editing end-to-end', () => {
     await page.locator('[data-nav=posts]').click();
     await page.locator('[data-action=new]').click();
     await page.locator('[data-input=title]').fill('Hello from the browser');
+    // slug auto-generates from the title until manually edited
+    await expect(page.locator('[data-input=slug]')).toHaveValue('hello-from-the-browser');
     await page.locator('[data-input=slug]').fill('hello-browser');
     await page.locator('[data-input=excerpt]').fill('Written by a real browser test.');
-    await page.locator('[data-input=body]').fill('This is **bold** browser content.');
+    // body is a real edodo-write markdown editor; type-to-format keeps Markdown as the value
+    await typeMarkdown(page, 'body', 'This is **bold** browser content.');
     // list field: tags
     await page.locator('[data-add=tags]').click();
     await page.locator('[data-input="tags.0"]').fill('testing');
@@ -88,9 +91,9 @@ test.describe('content editing end-to-end', () => {
     await page.locator('[data-add=body]').selectOption('hero');
     await page.locator('[data-input="body.0.heading"]').fill('We build in the open');
     await page.locator('[data-input="body.0.subheading"]').fill('An APIck-powered page');
-    // add a prose block
+    // add a prose block (markdown via edodo-write)
     await page.locator('[data-add=body]').selectOption('prose');
-    await page.locator('[data-input="body.1.markdown"]').fill('## Our story\n\nIt began with an *idea*.');
+    await typeMarkdown(page, 'body.1.markdown', 'Our story. It began with an idea.');
     // add a quote, then move it up above the prose
     await page.locator('[data-add=body]').selectOption('quote');
     await page.locator('[data-input="body.2.text"]').fill('Ship it.');
@@ -103,8 +106,7 @@ test.describe('content editing end-to-end', () => {
     // the theme renders the blocks in order: hero, quote, prose
     const html = await (await fetch(`${cms.url}/about`)).text();
     expect(html).toContain('We build in the open');
-    expect(html).toContain('<h2>Our story</h2>');
-    expect(html).toContain('<em>idea</em>');
+    expect(html).toContain('Our story. It began with an idea.');
     expect(html.indexOf('Ship it.')).toBeLessThan(html.indexOf('Our story'));
     // nav shows the page site-wide
     const home = await (await fetch(`${cms.url}/`)).text();

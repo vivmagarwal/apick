@@ -1,6 +1,6 @@
 {
   "name": "@apick/cms",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "APIck CMS \u2014 a full, themable CMS on top of @apick/core: schema-driven admin UI, users & sessions, server-rendered themable frontend, plugins. WordPress-class, headless-first.",
   "license": "MIT",
   "type": "module",
@@ -37,6 +37,7 @@
     "marked": "^15.0.0"
   },
   "devDependencies": {
+    "edodo-write": "^0.9.0",
     "esbuild": "^0.25.0",
     "htm": "^3.1.1",
     "preact": "^10.24.0"

@@ -1,8 +1,38 @@
 import { html } from 'htm/preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { del, get, patch, post, RequestError, type CollectionInfo, type FieldDef } from './api.js';
 import { Field } from './fields.js';
+import { withFlushedMarkdown } from './flush.js';
 import { navigate } from './router.js';
+
+/** Slugify a title for slug auto-generation. */
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+}
+
+/** The field a slug should be derived from: title/name/headline, else first required text. */
+function titleFieldFor(fields: Record<string, FieldDef>): string | null {
+  for (const key of ['title', 'name', 'headline']) {
+    if (fields[key]?.type === 'text' && fields[key]?.format !== 'slug') return key;
+  }
+  for (const [key, def] of Object.entries(fields)) {
+    if (def.type === 'text' && def.format !== 'slug' && def.required) return key;
+  }
+  return null;
+}
+
+function slugFieldFor(fields: Record<string, FieldDef>): string | null {
+  for (const [key, def] of Object.entries(fields)) if (def.format === 'slug') return key;
+  return null;
+}
+
+const AUTOSAVE_DELAY_MS = 1500;
 
 
 interface Doc {
@@ -45,6 +75,9 @@ function errorMap(err: unknown): { message: string; fields: Record<string, strin
 
 export function DocEditor({ collection, docId, info }: { collection: string; docId: string | null; info: CollectionInfo }): unknown {
   const fields = info.fields ?? {};
+  const titleField = titleFieldFor(fields);
+  const slugField = slugFieldFor(fields);
+
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [doc, setDoc] = useState<Doc | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,18 +86,33 @@ export function DocEditor({ collection, docId, info }: { collection: string; doc
   const [notice, setNotice] = useState('');
   const [versions, setVersions] = useState<Array<{ version: number; op: string; createdAt: string }>>([]);
   const [showVersions, setShowVersions] = useState(false);
+  const [autosaveState, setAutosaveState] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
+
+  // Refs so the debounced autosave sees current data without re-subscribing.
+  const savedSnapshot = useRef<string>(''); // JSON of last-persisted draft body
+  const slugTouched = useRef(false); // user manually edited the slug
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const valuesRef = useRef(values);
+  valuesRef.current = values;
 
   const load = async () => {
     if (!docId) return;
     const res = await get<{ data: Doc }>(`/v1/collections/${collection}/docs/${docId}?status=draft`);
     setDoc(res.data);
     setValues(res.data.data);
+    savedSnapshot.current = JSON.stringify(res.data.data);
+    slugTouched.current = !!(slugField && res.data.data[slugField]); // existing slug = leave it alone
+    setAutosaveState('idle');
   };
   useEffect(() => {
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     setValues({});
     setDoc(null);
     setError('');
     setFieldErrors({});
+    savedSnapshot.current = '';
+    slugTouched.current = false;
+    setAutosaveState('idle');
     load().catch((e) => setError(String(e)));
   }, [collection, docId]);
 
@@ -88,16 +136,74 @@ export function DocEditor({ collection, docId, info }: { collection: string; doc
     }
   };
 
+  /** Change a field; auto-derive the slug from the title until the slug is touched. */
+  const changeField = (name: string, v: unknown) => {
+    setValues((prev) => {
+      const next = { ...prev, [name]: v };
+      if (name === slugField) slugTouched.current = true;
+      if (name === titleField && slugField && !slugTouched.current && typeof v === 'string') {
+        next[slugField] = slugify(v);
+      }
+      return next;
+    });
+    setAutosaveState('dirty');
+  };
+
+  // Debounced autosave (existing docs only; never publishes). New docs save on
+  // the explicit button so required-field errors surface before anything persists.
+  useEffect(() => {
+    if (!docId) return;
+    if (autosaveState !== 'dirty') return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      const flushed = withFlushedMarkdown(valuesRef.current);
+      const body = cleanForWrite(fields, flushed, 'patch');
+      const snapshot = JSON.stringify(flushed);
+      setAutosaveState('saving');
+      patch(`/v1/collections/${collection}/docs/${docId}`, { patch: body })
+        .then(() => {
+          savedSnapshot.current = snapshot;
+          setAutosaveState((s) => (s === 'saving' ? 'saved' : s));
+          setFieldErrors({});
+        })
+        .catch((err) => {
+          const mapped = errorMap(err);
+          setFieldErrors(mapped.fields);
+          setError(mapped.message);
+          setAutosaveState('error');
+        });
+    }, AUTOSAVE_DELAY_MS);
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    };
+  }, [autosaveState, values, docId, collection]);
+
+  // Warn before leaving with unsaved changes (dirty or a pending autosave).
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (autosaveState === 'dirty' || autosaveState === 'saving') {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [autosaveState]);
+
   const save = (publish: boolean) =>
     run(async () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+      const flushed = withFlushedMarkdown(values);
       if (!docId) {
-        const body = cleanForWrite(fields, values, 'create');
+        const body = cleanForWrite(fields, flushed, 'create');
         const res = await post<{ data: Doc }>(`/v1/collections/${collection}/docs`, { data: body, publish });
         flash(publish ? 'Created & published' : 'Draft created');
         navigate(`/admin/c/${collection}/${res.data.docId}`);
       } else {
-        const body = cleanForWrite(fields, values, 'patch');
+        const body = cleanForWrite(fields, flushed, 'patch');
         await patch(`/v1/collections/${collection}/docs/${docId}`, { patch: body });
+        savedSnapshot.current = JSON.stringify(flushed);
+        setAutosaveState('idle');
         if (publish) await post(`/v1/collections/${collection}/docs/${docId}/publish`);
         flash(publish ? 'Saved & published' : 'Draft saved');
         await load();
@@ -142,11 +248,22 @@ export function DocEditor({ collection, docId, info }: { collection: string; doc
         ? 'modified'
         : 'published';
 
+  const autosaveLabel: Record<typeof autosaveState, string> = {
+    idle: '',
+    dirty: 'Unsaved changes',
+    saving: 'Saving…',
+    saved: 'All changes saved',
+    error: 'Autosave failed',
+  };
+
   return html`<div class="editor" data-view="editor">
     <div class="page-head">
       <div>
         <h1>${docId ? 'Edit' : 'New'} <span class="muted">/ ${collection}</span></h1>
         ${doc ? html`<span class=${`status status-${status}`} data-status=${status}>${status}</span>` : ''}
+        ${docId && autosaveState !== 'idle'
+          ? html`<span class=${`autosave autosave-${autosaveState}`} data-autosave=${autosaveState}>${autosaveLabel[autosaveState]}</span>`
+          : ''}
       </div>
       <div class="actions">
         ${docId && html`<button class="btn btn-ghost" onClick=${loadVersions} data-action="versions">History</button>`}
@@ -167,7 +284,7 @@ export function DocEditor({ collection, docId, info }: { collection: string; doc
     <form class="doc-form" onSubmit=${(e: Event) => e.preventDefault()}>
       ${Object.entries(fields).map(
         ([name, def]) => html`<${Field} name=${name} path=${name} def=${def} value=${values[name]} errors=${fieldErrors}
-          onChange=${(v: unknown) => setValues((prev: Record<string, unknown>) => ({ ...prev, [name]: v }))} />`,
+          onChange=${(v: unknown) => changeField(name, v)} />`,
       )}
     </form>
 

@@ -5,9 +5,10 @@ import { clearToken, fetchMe, fetchStatus, getToken, loadCollections, type Admin
 import { currentPath, navigate, onRouteChange } from './router.js';
 import { Login, Setup, Dashboard, UsersPage, KeysPage, WebhooksPage } from './pages.js';
 import { CollectionListing } from './listing.js';
+import { MediaPage } from './media.js';
 import { DocEditor } from './editor.js';
 
-const HIDDEN_COLLECTIONS = new Set(['cms-users']);
+const HIDDEN_COLLECTIONS = new Set(['cms-users', 'media']);
 
 function Shell({ me, status, collections, children }: { me: Me; status: AdminStatus; collections: CollectionInfo[]; children: unknown }): unknown {
   const path = currentPath();
@@ -28,6 +29,9 @@ function Shell({ me, status, collections, children }: { me: Me; status: AdminSta
         ${contentCollections.map(
           (col) => html`<a class=${active(`/admin/c/${col.key}`)} href=${`/admin/c/${col.key}`} data-nav=${col.key}>${col.key}</a>`,
         )}
+        ${collections.some((c) => c.key === 'media')
+          ? html`<a class=${active('/admin/media')} href="/admin/media" data-nav="media">Media</a>`
+          : ''}
         ${isAdmin &&
         html`<div class="nav-section">Settings</div>
           <a class=${active('/admin/users')} href="/admin/users" data-nav="users">Users</a>
@@ -100,6 +104,8 @@ function App(): unknown {
     view = info
       ? html`<${CollectionListing} collection=${listMatch[1]} info=${info} />`
       : html`<div class="error-banner">Unknown collection</div>`;
+  } else if (path === '/admin/media') {
+    view = html`<${MediaPage} />`;
   } else if (path === '/admin/users') {
     view = html`<${UsersPage} me=${me} />`;
   } else if (path === '/admin/keys') {

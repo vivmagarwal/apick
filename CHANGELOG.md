@@ -3,6 +3,20 @@
 All notable changes to the APIck packages. Semver applies pre-1.0 as:
 breaking API changes bump the minor.
 
+## @apick/cms 0.2.0 — unreleased
+
+- **Media library**: drag-and-drop upload UI, browse grid, and a picker built
+  into every `f.image()` field; public serving at `/media/:id/:filename` with
+  nosniff + sandbox-CSP hardening; a `media` collection so listings/permissions/
+  webhooks/MCP all apply; pluggable storage driver (default: core blob store).
+- **edodo-write** as the markdown editor (Notion/Medium WYSIWYG, Markdown as the
+  value, images upload to the media library); a flush registry guarantees no
+  keystroke is lost across the editor's change debounce, even on block reorder.
+- **Editor niceties**: slug auto-generation from the title (until edited),
+  draft autosave with a status indicator, and an unsaved-changes guard.
+- **Fix**: the login rate limiter is now per-CMS-instance (was module-global,
+  so multiple `createCms` in one process could rate-limit each other).
+
 ## @apick/cms 0.1.0 — unreleased
 
 Initial release: a full, themable CMS on @apick/core.
@@ -19,6 +33,14 @@ Initial release: a full, themable CMS on @apick/core.
 - `apick-cms init` scaffolder: conventional collections/ theme/ plugins/
   layout with the framework only in node_modules.
 - Tested by 9 black-box API tests + 11 real-browser Playwright tests.
+
+## @apick/core 0.5.0 — unreleased
+
+- `f.image()` field (image-URL text with a media-picker hint).
+- A minimal blob store (`putBlob`/`getBlob`/`deleteBlob`, migration 003) —
+  server-side binary storage primitive used by @apick/cms media; no HTTP
+  surface in core. Tenant-scoped, zero-config, replica-safe.
+- Exported `can`/`assertCan` for extension routes.
 
 ## @apick/core 0.4.0 — unreleased
 

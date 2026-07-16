@@ -136,6 +136,49 @@ fieldset.nested { border: 1px dashed var(--line); border-radius: var(--radius); 
 
 /* ---- editor page ---- */
 .editor .page-head h1 { display: inline-block; margin-right: 0.6rem; }
+.autosave { font-size: 0.78rem; color: var(--muted); margin-left: 0.6rem; }
+.autosave-saving { color: var(--warn); }
+.autosave-saved { color: var(--ok); }
+.autosave-dirty { color: var(--muted); }
+.autosave-error { color: var(--danger); }
+
+/* ---- markdown (edodo-write) field ---- */
+.markdown-field { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); min-height: 220px; }
+.markdown-field:focus-within { outline: 2px solid #d2431730; border-color: var(--accent); }
+.markdown-field .edodo-write, .markdown-field [class*="edodo"] { --ew-content-width: 100%; }
+
+/* ---- image field ---- */
+.image-field { display: grid; gap: 0.5rem; }
+.image-field-row { display: flex; gap: 0.4rem; align-items: center; }
+.image-field-row input { flex: 1; }
+.image-preview { max-width: 260px; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.image-preview img { display: block; width: 100%; height: auto; }
+
+/* ---- upload zone ---- */
+.upload-zone { border: 2px dashed var(--line); border-radius: var(--radius); padding: 1.6rem; text-align: center; color: var(--muted);
+  cursor: pointer; background: var(--surface); margin-bottom: 1.2rem; transition: border-color 0.12s, background 0.12s; }
+.upload-zone:hover { border-color: var(--accent); }
+.upload-zone.dragging { border-color: var(--accent); background: #d2431710; color: var(--accent); }
+
+/* ---- media grid ---- */
+.media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 0.8rem; }
+.media-tile { position: relative; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+.media-tile.selectable { cursor: pointer; }
+.media-tile.selectable:hover { border-color: var(--accent); }
+.media-thumb { aspect-ratio: 4/3; background: var(--bg); display: grid; place-items: center; overflow: hidden; }
+.media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.media-file-icon { font-family: var(--mono); font-size: 0.8rem; font-weight: 700; color: var(--muted); letter-spacing: 0.05em; }
+.media-meta { padding: 0.5rem 0.6rem; }
+.media-name { font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.media-sub { font-size: 0.72rem; color: var(--muted); }
+.media-del { position: absolute; top: 0.35rem; right: 0.35rem; border: none; background: #000000a8; color: #fff; border-radius: 6px;
+  width: 22px; height: 22px; cursor: pointer; opacity: 0; transition: opacity 0.12s; font-size: 0.7rem; }
+.media-tile:hover .media-del { opacity: 1; }
+.media-empty { grid-column: 1 / -1; }
+
+/* ---- modal (media picker) ---- */
+.modal-backdrop { position: fixed; inset: 0; background: #00000066; display: grid; place-items: center; z-index: 30; padding: 2rem; }
+.modal { background: var(--surface); border-radius: 12px; width: min(760px, 94vw); max-height: 84vh; overflow-y: auto; padding: 1.2rem 1.4rem; box-shadow: 0 30px 80px #00000055; }
 
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; }

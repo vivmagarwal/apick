@@ -221,6 +221,25 @@ const MIGRATIONS: Migration[] = [
       `create unique index apick_principals_external on apick_principals (external_id) where external_id is not null`,
     ],
   },
+  {
+    version: 3,
+    name: 'blob-store',
+    statements: [
+      // Minimal binary storage primitive (used by @apick/cms media; no HTTP
+      // surface in core). Zero-config + replica-safe by living in Postgres;
+      // large deployments bring object storage instead.
+      `create table apick_blobs (
+        id uuid primary key,
+        tenant_id uuid not null,
+        sha256 text not null,
+        mime text not null,
+        size int not null,
+        data bytea not null,
+        created_at timestamptz not null default now()
+      )`,
+      `create index apick_blobs_tenant on apick_blobs (tenant_id, created_at)`,
+    ],
+  },
 ];
 
 export async function migrate(db: Db): Promise<{ applied: string[] }> {

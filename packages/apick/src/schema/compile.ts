@@ -81,7 +81,7 @@ function fieldToSchema(def: FieldDef, opts: { forRead: boolean }): TSchema | nul
       if (def.minLength !== undefined) o['minLength'] = def.minLength;
       if (def.maxLength !== undefined) o['maxLength'] = def.maxLength;
       if (def.pattern !== undefined) o['pattern'] = def.pattern;
-      if (def.format !== undefined && def.format !== 'markdown') o['format'] = def.format;
+      if (def.format !== undefined && def.format !== 'markdown' && def.format !== 'image') o['format'] = def.format;
       return Type.String(o);
     }
     case 'integer': {

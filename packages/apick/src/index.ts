@@ -25,7 +25,8 @@ export type { CronDefinition } from './kernel/cron.js';
 export type { EnqueueJobInput, JobRow } from './kernel/jobs.js';
 export type { PermissionRule, AccessContext, TenantRow, ExternalIdentity, VerifyTokenHook, RoleDefinition } from './auth/rbac.js';
 // server-side administration (trusted code embedding apick, e.g. @apick/cms)
-export { createPrincipal, grantRole, createApiKey, revokeApiKey, hashToken, resolveTenantBySlugOrId } from './auth/rbac.js';
+export { createPrincipal, grantRole, createApiKey, revokeApiKey, hashToken, resolveTenantBySlugOrId, can, assertCan } from './auth/rbac.js';
+export { putBlob, getBlob, deleteBlob, type BlobMeta } from './kernel/blobs.js';
 export type { HonoEnv } from './http/app.js';
 export type { RetentionConfig } from './app/retention.js';
 export { VERSION } from './version.js';

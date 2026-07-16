@@ -31,7 +31,13 @@ await app.listen(3000);
   a schema-driven editor for every field type (text/markdown/number/boolean/
   datetime/enum/json/objects/lists/relations/**blocks with reordering**),
   draft→publish workflow with `draft/modified/published` states, version
-  history with restore, users, API keys, webhooks.
+  history with restore, users, API keys, webhooks. Markdown fields use the
+  **edodo-write** Notion/Medium-style WYSIWYG editor (Markdown stays the value);
+  the title auto-fills the slug; drafts **autosave**.
+- **Media library** at `/admin/media`: drag-and-drop / click upload, a browse
+  grid, and a picker built into every image field. Files serve from
+  `/media/:id/:filename` with hardened headers, and each upload is an ordinary
+  `media` document (so listings, permissions, webhooks and MCP all apply).
 - **Site** at `/`: server-rendered by the theme — home, `/blog`,
   `/blog/:slug`, `/:page-slug`, nav from pages, themed 404, dark-mode aware,
   zero client JS.
@@ -121,6 +127,41 @@ export const analyticsPlugin = {
 };
 ```
 
+## Media
+
+Uploads are first-class content. `f.image()` fields render a picker; the
+markdown editor uploads pasted/dropped images automatically. Bytes live in
+core's blob store by default (zero-config, replica-safe Postgres) — swap in
+object storage for large libraries:
+
+```js
+await createCms({
+  media: {
+    maxFileSizeMB: 25,
+    allowedTypes: ['image/', 'application/pdf'],   // exact types or prefixes
+    storage: {                                      // optional: your own driver
+      put: async (tenantId, data, mime) => ({ key: await s3put(data, mime) }),
+      get: async (tenantId, key) => ({ data: await s3get(key), mime: '…' }),
+      delete: async (tenantId, key) => { await s3del(key); },
+    },
+  },
+});
+```
+
+Use `f.image()` for URL fields that should show a media picker + preview
+(`coverImageUrl: f.image()`); it accepts app-relative `/media/…` URLs or any
+absolute URL. Public serving is hardened: `X-Content-Type-Options: nosniff`,
+a `sandbox` CSP, `inline` disposition, long-lived immutable caching + ETags.
+
+## The markdown editor
+
+Markdown fields (`f.markdown()`) use [edodo-write](https://github.com/vivmagarwal/edodo-write):
+type-to-format headings/lists/quotes/code, a `/` slash menu, a selection
+toolbar, tables, and image paste — with **Markdown as the stored value**, so
+content stays portable and diff-able. No keystroke is lost across the editor's
+change debounce: the CMS pulls each editor's current text synchronously at save
+and autosave time.
+
 ## Configuration
 
 `createCms` accepts everything `createApp` does (database, retention, CORS,
@@ -133,6 +174,7 @@ webhooks, telemetry, …) plus:
 | `defaultContent: false` | drop pages/posts |
 | `theme` | child-theme overrides |
 | `plugins` | see above |
+| `media` | `{ maxFileSizeMB, allowedTypes, storage }` — see Media above |
 | `session.ttlHours` (72) / `session.secret` | session policy; secret comes from config → `APICK_CMS_SECRET` → generated once and persisted |
 
 ## Deploying
@@ -145,6 +187,6 @@ so replicas and restarts agree with no coordination.
 ## v1 boundaries
 
 The admin manages the default tenant (multi-tenant admin UI is post-v1 —
-the API's multi-tenancy is unaffected). No media library yet — store files in
-object storage and use `f.uri` fields. Both are on the roadmap in
+the API's multi-tenancy is unaffected). Editor markdown renders unsanitized
+(trusted authors, as in WordPress). See
 [ADR-0002](../decisions/0002-cms-on-core.md).

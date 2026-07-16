@@ -32,7 +32,7 @@ const articles = defineCollection('articles', {
 
 ## Field types
 
-`f.text` `f.markdown` `f.email` `f.uri` `f.slug` `f.integer` `f.number`
+`f.text` `f.markdown` `f.email` `f.uri` `f.image` `f.slug` `f.integer` `f.number`
 `f.boolean` `f.datetime` (ISO-8601) `f.date` (YYYY-MM-DD) `f.enum` `f.json`
 `f.object` `f.list` `f.relation` `f.relations` `f.blocks`
 

@@ -13,6 +13,9 @@ export async function bootCms(config: Partial<CmsConfig> = {}): Promise<RunningC
     database: 'pglite://memory',
     logger: silentLogger,
     site: { title: 'Browser Test Site', description: 'A site under test' },
+    // UI tests don't exercise background jobs/cron; keeping the worker off means
+    // no lingering timers accumulate across the many boots in one test process.
+    worker: false,
     ...config,
   });
   const { url } = await app.listen();
@@ -48,3 +51,11 @@ export async function loginViaUi(page: Page, url: string, email: string, passwor
   await page.locator('[data-action=login]').click();
   await page.waitForSelector('[data-view=dashboard]');
 }
+
+/** Type into an edodo-write markdown field (real contenteditable typing). */
+export async function typeMarkdown(page: Page, path: string, text: string): Promise<void> {
+  const editable = page.locator(`[data-markdown="${path}"] [contenteditable="true"]`);
+  await editable.click();
+  await editable.pressSequentially(text);
+}
+
