@@ -1,6 +1,6 @@
 {
   "name": "@apick/cms",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "APIck CMS \u2014 a full, themable CMS on top of @apick/core: schema-driven admin UI, users & sessions, server-rendered themable frontend, plugins. WordPress-class, headless-first.",
   "license": "MIT",
   "type": "module",

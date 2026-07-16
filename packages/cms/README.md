@@ -5,6 +5,13 @@ WordPress-class out of the box, headless-first underneath. Your schema
 definition generates the admin UI, the REST API, the MCP tools and the
 validation, all from one source.
 
+> **🤖 Building with an AI/LLM? Give it the complete, always-current guide (CMS + full core API) in one file:**
+> **https://cdn.jsdelivr.net/npm/@apick/cms/llms-full.txt**
+> (short index: [`…/llms.txt`](https://cdn.jsdelivr.net/npm/@apick/cms/llms.txt) ·
+> mirror: [`unpkg.com/@apick/cms/llms-full.txt`](https://unpkg.com/@apick/cms/llms-full.txt) ·
+> pin a version: `@apick/cms@0.2.3/llms-full.txt`). Ships in the package,
+> generated from the docs, version-stamped.
+
 ```bash
 npx --package=@apick/cms apick-cms init my-site && cd my-site && npm install && npm start
 ```

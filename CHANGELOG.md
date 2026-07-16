@@ -3,6 +3,11 @@
 All notable changes to the APIck packages. Semver applies pre-1.0 as:
 breaking API changes bump the minor.
 
+## @apick/cms 0.2.3 — unreleased
+
+- Same "APIck in one page" cheatsheet at the top of the llms docs; README links
+  the CDN-hosted llms files. Docs-only.
+
 ## @apick/cms 0.2.2 — unreleased
 
 - Ships per-package `llms.txt` + `llms-full.txt` (CMS guide + full core API),
@@ -49,6 +54,13 @@ Initial release: a full, themable CMS on @apick/core.
 - `apick-cms init` scaffolder: conventional collections/ theme/ plugins/
   layout with the framework only in node_modules.
 - Tested by 9 black-box API tests + 11 real-browser Playwright tests.
+
+## @apick/core 0.5.3 — unreleased
+
+- llms docs now open with an "APIck in one page" cheatsheet (DSL, endpoints,
+  filter grammar, invariants) so an LLM gets full working context up front.
+- README links the CDN-hosted llms files (jsDelivr/unpkg) for agents. Fixed the
+  package title (`# @apick/core`). Docs-only.
 
 ## @apick/core 0.5.2 — unreleased
 

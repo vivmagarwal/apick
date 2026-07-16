@@ -27,6 +27,7 @@ const CHECK = process.argv.includes('--check');
 
 // --- guide catalog: path + one-line summary (drives both index and full) ---
 const GUIDE = {
+  overview: ['docs/guides/apick-in-one-page.md', 'the whole API compactly — DSL, endpoints, filter grammar, invariants (read first)'],
   gettingStarted: ['docs/guides/getting-started.md', 'install, hello world, document lifecycle, error contract'],
   cms: ['docs/guides/cms.md', 'the full themable CMS on core — admin UI, users, media, themes, plugins'],
   schema: ['docs/guides/schema.md', 'field DSL, unique/private/indexed/immutable, lossless renames'],
@@ -43,11 +44,12 @@ const GUIDE = {
 
 // Which guides belong to which package. cms is a superset: it needs the full
 // core API (same schema DSL, RBAC, queries) PLUS the CMS-specific guide.
-const CORE_ORDER = ['gettingStarted', 'schema', 'queries', 'authRbac', 'tenancy', 'webhooks', 'jobsCron', 'mcp', 'deployment', 'portability', 'extending'];
-const CMS_ORDER = ['cms', 'gettingStarted', 'schema', 'queries', 'authRbac', 'tenancy', 'webhooks', 'jobsCron', 'mcp', 'deployment', 'portability', 'extending'];
-const FRAMEWORK_ORDER = ['gettingStarted', 'cms', 'schema', 'queries', 'authRbac', 'tenancy', 'webhooks', 'jobsCron', 'mcp', 'deployment', 'portability', 'extending'];
+const CORE_ORDER = ['overview', 'gettingStarted', 'schema', 'queries', 'authRbac', 'tenancy', 'webhooks', 'jobsCron', 'mcp', 'deployment', 'portability', 'extending'];
+const CMS_ORDER = ['overview', 'cms', 'gettingStarted', 'schema', 'queries', 'authRbac', 'tenancy', 'webhooks', 'jobsCron', 'mcp', 'deployment', 'portability', 'extending'];
+const FRAMEWORK_ORDER = ['overview', 'gettingStarted', 'cms', 'schema', 'queries', 'authRbac', 'tenancy', 'webhooks', 'jobsCron', 'mcp', 'deployment', 'portability', 'extending'];
 
 const title = {
+  overview: 'APIck in one page',
   gettingStarted: 'Getting started', cms: '@apick/cms', schema: 'Schema & fields', queries: 'Queries',
   authRbac: 'Auth & RBAC', tenancy: 'Multi-tenancy', webhooks: 'Webhooks', jobsCron: 'Jobs & cron',
   mcp: 'MCP', deployment: 'Deployment', portability: 'Portability', extending: 'Extending',

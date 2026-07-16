@@ -1,10 +1,17 @@
-# apick
+# @apick/core
 
 **API Construction Kit** — a pure-headless, AI-first application platform for
 Node.js and Postgres. One TypeScript schema definition produces a validated
 REST API, RBAC, multi-tenancy, versioned documents with draft/publish,
 reliable signed webhooks, durable background jobs and cron, OpenAPI 3.1,
 `llms.txt`, and a first-class MCP server. No admin UI, by design.
+
+> **🤖 Building with an AI/LLM? Give it the complete, always-current API in one file:**
+> **https://cdn.jsdelivr.net/npm/@apick/core/llms-full.txt**
+> (short index: [`…/llms.txt`](https://cdn.jsdelivr.net/npm/@apick/core/llms.txt) ·
+> mirror: [`unpkg.com/@apick/core/llms-full.txt`](https://unpkg.com/@apick/core/llms-full.txt) ·
+> pin a version: `@apick/core@0.5.3/llms-full.txt`). These ship in the package,
+> are generated from the docs, and are stamped with the exact version.
 
 ```ts
 import { createApp, defineCollection, f } from '@apick/core';

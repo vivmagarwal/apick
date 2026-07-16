@@ -3,6 +3,17 @@
 Two packages, one idea: **the platform is headless; everything else is a
 consumer of its API.**
 
+> **🤖 Building with an AI/LLM?** Hand it the complete, always-current API in one
+> file — these ship inside the npm packages, are generated from the docs, and are
+> version-stamped:
+> - `@apick/core`: **https://cdn.jsdelivr.net/npm/@apick/core/llms-full.txt**
+> - `@apick/cms`: **https://cdn.jsdelivr.net/npm/@apick/cms/llms-full.txt**
+>
+> Short indexes at `…/llms.txt`; unpkg mirrors at `https://unpkg.com/@apick/core/llms-full.txt`;
+> pin a version like `@apick/core@0.5.3/llms-full.txt` for reproducibility. Every
+> running app also serves live, schema-specific docs at `/llms.txt`,
+> `/llms-full.txt`, `/openapi.json`.
+
 - **[`@apick/core`](packages/apick)** — a pure-headless, AI-first application
   platform. Define your content model in TypeScript; get a validated REST API,
   RBAC, multi-tenancy, versioned documents, reliable webhooks, durable
