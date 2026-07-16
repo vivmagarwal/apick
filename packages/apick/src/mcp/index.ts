@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { ApickError, errors } from '../kernel/errors.js';
 import { appendEvent } from '../kernel/events.js';
-import { assertCan, can, type AccessContext } from '../auth/rbac.js';
+import { metricsBundle, withSpan } from '../kernel/telemetry.js';
+import { assertCan, assertFieldsWritable, can, type AccessContext } from '../auth/rbac.js';
 import { storeContextFor, type AppCore } from '../app/core.js';
 import {
   createDoc,
@@ -289,6 +290,7 @@ async function callTool(core: AppCore, ctx: AccessContext, name: string, args: A
       if (args['data'] === null || typeof args['data'] !== 'object' || Array.isArray(args['data'])) {
         throw errors.badRequest('Tool argument "data" (object) is required');
       }
+      assertFieldsWritable(ctx, 'create', collection, Object.keys(args['data'] as Record<string, unknown>));
       const doc = await createDoc(core.db, core.registry.get(collection).compiled, storeContextFor(ctx, core), {
         data: args['data'] as Record<string, unknown>,
         locale,
@@ -302,6 +304,7 @@ async function callTool(core: AppCore, ctx: AccessContext, name: string, args: A
       if (args['patch'] === null || typeof args['patch'] !== 'object' || Array.isArray(args['patch'])) {
         throw errors.badRequest('Tool argument "patch" (object) is required');
       }
+      assertFieldsWritable(ctx, 'update', collection, Object.keys(args['patch'] as Record<string, unknown>));
       const doc = await patchDoc(core.db, core.registry.get(collection).compiled, storeContextFor(ctx, core), {
         docId: argStr(args, 'docId'),
         patch: args['patch'] as Record<string, unknown>,
@@ -347,6 +350,7 @@ async function callTool(core: AppCore, ctx: AccessContext, name: string, args: A
     case 'restore_version': {
       const collection = argStr(args, 'collection');
       assertCan(ctx, 'update', `doc:${collection}`);
+      assertFieldsWritable(ctx, 'update', collection, Object.keys(core.registry.get(collection).compiled.fields));
       if (typeof args['version'] !== 'number') throw errors.badRequest('Tool argument "version" (integer) is required');
       const doc = await restoreVersion(core.db, core.registry.get(collection).compiled, storeContextFor(ctx, core), argStr(args, 'docId'), args['version'] as number, locale);
       return { data: doc };
@@ -415,7 +419,7 @@ export function mcpRoutes(): Hono<HonoEnv> {
         const started = Date.now();
         let outcome = 'ok';
         try {
-          const result = await callTool(core, ctx, name, args);
+          const result = await withSpan('apick.mcp.tool_call', { 'apick.tool': name }, () => callTool(core, ctx, name, args));
           return c.json(
             rpcResult(rpc.id, {
               content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -433,6 +437,7 @@ export function mcpRoutes(): Hono<HonoEnv> {
             }),
           );
         } finally {
+          metricsBundle.mcpCalls.add(1, { 'apick.tool': name, 'apick.outcome': outcome });
           if (core.config.interactionLog !== 'off') {
             appendEvent(core.db, {
               tenantId: ctx.tenantId,

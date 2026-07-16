@@ -17,7 +17,7 @@ import {
 } from '../auth/rbac.js';
 import { storeContextFor } from '../app/core.js';
 import { createDoc, patchDoc, publishDoc, type DocRow } from '../content/store.js';
-import { createWebhook, replayDelivery, type DeliveryRow, type WebhookRow } from '../webhooks/index.js';
+import { createWebhook, replayDelivery, validateWebhookUrl, type DeliveryRow, type WebhookRow } from '../webhooks/index.js';
 import type { HonoEnv } from './app.js';
 
 function requireOperator(ctx: AccessContext): void {
@@ -67,6 +67,7 @@ export function systemRoutes(): Hono<HonoEnv> {
       name: str(body, 'name'),
       ...(body['settings'] && typeof body['settings'] === 'object' ? { settings: body['settings'] as Record<string, unknown> } : {}),
     });
+    c.get('core').caches.clearAll();
     return c.json({ data: tenant }, 201);
   });
 
@@ -87,6 +88,7 @@ export function systemRoutes(): Hono<HonoEnv> {
       where id = ${tenant.id}
       returning id, slug, name, status, settings
     `);
+    c.get('core').caches.clearAll();
     return c.json({ data: rows[0] });
   });
 
@@ -104,6 +106,20 @@ export function systemRoutes(): Hono<HonoEnv> {
       ...(typeof body['email'] === 'string' ? { email: body['email'] } : {}),
     });
     return c.json({ data: principal }, 201);
+  });
+
+  app.get('/principals', async (c) => {
+    const { db } = c.get('core');
+    const ctx = c.get('access');
+    assertCan(ctx, 'manage', 'system:principals');
+    const scoped = ctx.isOperator
+      ? sql.raw('true')
+      : sql`p.id in (select principal_id from apick_role_grants where tenant_id = ${ctx.tenantId})`;
+    const { rows } = await db.query(sql`
+      select p.id, p.kind, p.name, p.email, p.external_id, p.created_at
+      from apick_principals p where ${scoped} order by p.created_at desc limit 500
+    `);
+    return c.json({ data: rows });
   });
 
   /**
@@ -139,6 +155,7 @@ export function systemRoutes(): Hono<HonoEnv> {
       ...(typeof body['label'] === 'string' ? { label: body['label'] } : {}),
       ...(typeof body['expiresAt'] === 'string' ? { expiresAt: new Date(body['expiresAt']) } : {}),
     });
+    c.get('core').caches.clearAll();
     return c.json({ data: { id: key.id, token: key.token, prefix: key.prefix, principalId } }, 201);
   });
 
@@ -174,6 +191,7 @@ export function systemRoutes(): Hono<HonoEnv> {
     }
     const ok = await revokeApiKey(db, c.req.param('id'));
     if (!ok) throw errors.notFound('Key not found or already revoked');
+    c.get('core').caches.clearAll();
     return c.json({ data: { revoked: true } });
   });
 
@@ -220,6 +238,7 @@ export function systemRoutes(): Hono<HonoEnv> {
       tenantId: scope === 'operator' ? null : ctx.tenantId,
       permissions,
     });
+    c.get('core').caches.clearAll();
     return c.json({ data: role }, 201);
   });
 
@@ -235,6 +254,7 @@ export function systemRoutes(): Hono<HonoEnv> {
       roleKey: str(body, 'roleKey'),
       tenantId: scope === 'operator' ? null : ctx.tenantId,
     });
+    c.get('core').caches.clearAll();
     return c.json({ data: { granted: true } }, 201);
   });
 
@@ -251,23 +271,28 @@ export function systemRoutes(): Hono<HonoEnv> {
   });
 
   app.post('/webhooks', async (c) => {
-    const { db } = c.get('core');
+    const core = c.get('core');
     const ctx = c.get('access');
     assertCan(ctx, 'manage', 'system:webhooks');
     const body = await jsonBody(c);
-    const hook = await createWebhook(db, {
-      tenantId: ctx.tenantId,
-      name: str(body, 'name'),
-      url: str(body, 'url'),
-      ...(Array.isArray(body['events']) ? { events: body['events'] as string[] } : {}),
-      ...(body['headers'] && typeof body['headers'] === 'object' ? { headers: body['headers'] as Record<string, string> } : {}),
-    });
+    const hook = await createWebhook(
+      core.db,
+      {
+        tenantId: ctx.tenantId,
+        name: str(body, 'name'),
+        url: str(body, 'url'),
+        ...(Array.isArray(body['events']) ? { events: body['events'] as string[] } : {}),
+        ...(body['headers'] && typeof body['headers'] === 'object' ? { headers: body['headers'] as Record<string, string> } : {}),
+      },
+      { allowPrivateTargets: core.config.webhooks.allowPrivateTargets },
+    );
     // secret is returned once at creation
     return c.json({ data: hook }, 201);
   });
 
   app.patch('/webhooks/:id', async (c) => {
-    const { db } = c.get('core');
+    const core = c.get('core');
+    const { db } = core;
     const ctx = c.get('access');
     assertCan(ctx, 'manage', 'system:webhooks');
     const body = await jsonBody(c);
@@ -277,6 +302,9 @@ export function systemRoutes(): Hono<HonoEnv> {
     const hook = existing[0];
     if (!hook) throw errors.notFound('Webhook not found');
     const url = typeof body['url'] === 'string' ? body['url'] : hook.url;
+    if (url !== hook.url) {
+      await validateWebhookUrl(url, core.config.webhooks.allowPrivateTargets);
+    }
     const name = typeof body['name'] === 'string' ? body['name'] : hook.name;
     const enabled = typeof body['enabled'] === 'boolean' ? body['enabled'] : hook.enabled;
     const events = Array.isArray(body['events']) ? (body['events'] as string[]) : hook.events;
@@ -317,7 +345,7 @@ export function systemRoutes(): Hono<HonoEnv> {
     const { db } = core;
     const ctx = c.get('access');
     assertCan(ctx, 'manage', 'system:webhooks');
-    const ok = await replayDelivery(db, ctx.tenantId, c.req.param('id'), core.config.webhookRetry);
+    const ok = await replayDelivery(db, ctx.tenantId, c.req.param('id'), core.config.webhooks.retry);
     if (!ok) throw errors.notFound('Delivery not found or not dead');
     return c.json({ data: { replayed: true } });
   });

@@ -126,6 +126,35 @@ describe('RBAC', () => {
     expect((await tech.get(`/v1/collections/reports/docs/${lifeDocId}`)).status).toBe(404); // invisible, not forbidden
   });
 
+  it('custom role with a WRITE field whitelist: only listed fields are writable', async () => {
+    await running.api.post('/v1/roles', {
+      key: 'title-writer',
+      name: 'Title writer',
+      permissions: [
+        { action: 'read', resource: 'doc:reports' },
+        { action: 'readDraft', resource: 'doc:reports' },
+        { action: 'create', resource: 'doc:reports', fields: ['title'] },
+        { action: 'update', resource: 'doc:reports', fields: ['title'] },
+      ],
+    });
+    const key = await running.api.post('/v1/keys', { role: 'title-writer', name: 'tw' });
+    const writer = running.api.with({ token: key.body.data.token });
+
+    const ok = await writer.post('/v1/collections/reports/docs', { data: { title: 'allowed' } });
+    expect(ok.status).toBe(201);
+    const docId = ok.body.data.docId;
+
+    const badCreate = await writer.post('/v1/collections/reports/docs', { data: { title: 'x', views: 5 } });
+    expect(badCreate.status).toBe(403);
+
+    expect((await writer.patch(`/v1/collections/reports/docs/${docId}`, { patch: { title: 'renamed' } })).status).toBe(200);
+    const badPatch = await writer.patch(`/v1/collections/reports/docs/${docId}`, { patch: { views: 9 } });
+    expect(badPatch.status).toBe(403);
+
+    // restore rewrites the whole document: requires unrestricted write
+    expect((await writer.post(`/v1/collections/reports/docs/${docId}/versions/1/restore`)).status).toBe(403);
+  });
+
   it('revoked and expired keys stop working', async () => {
     const key = await running.api.post('/v1/keys', { role: 'content-reader', name: 'shortlived' });
     const client = running.api.with({ token: key.body.data.token });

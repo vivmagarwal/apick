@@ -62,9 +62,49 @@ hook and it scopes everything.
 - API keys are stored hashed (SHA-256); webhook secrets are stored to sign
   payloads. Use scoped keys with `expiresAt` for CI and agents.
 
+## CORS
+
+Enabled for all origins by default — safe because auth is bearer-token based
+(no cookies, so no CSRF surface). Restrict or disable per install:
+
+```ts
+await createApp({ cors: { origins: ['https://app.example.com'] } }); // or cors: false
+```
+
+## Probes & shutdown
+
+- `GET /health` — liveness (no dependencies)
+- `GET /health/ready` — readiness (database reachable); returns 503 otherwise
+- `app.stop({ gracefulMs })` — stops accepting connections, drains in-flight
+  HTTP (default 10s), finishes in-flight jobs, then closes the database. Wire
+  it to SIGTERM:
+
+```ts
+process.on('SIGTERM', () => app.stop().then(() => process.exit(0)));
+```
+
+## Retention
+
+Events and finished jobs are pruned automatically (90/7/30-day defaults);
+version history only if you opt in. See [jobs-cron.md](jobs-cron.md#retention-built-in-pruning).
+
+## Performance notes
+
+- Auth lookups are cached per instance (`authCacheTtlMs`, default 5s; see
+  [auth-rbac.md](auth-rbac.md#caching--revocation) for revocation semantics).
+- `scripts/bench.mjs` measures the full HTTP stack; embedded PGlite is a
+  single connection (fine for dev), real Postgres with the pool is what
+  production numbers should be taken on.
+
 ## Observability
 
 - Structured JSON logs (pino-shaped) on stdout; inject your own with `logger`.
+- Every response carries `x-request-id` (yours is propagated if well-formed).
+- **OpenTelemetry out of the box**: APIck instruments against
+  `@opentelemetry/api` — register any OTel SDK in your process (NodeSDK, a
+  tracer provider) and you get `apick.http.request`, `apick.job.run`,
+  `apick.mcp.tool_call` spans plus request-duration histograms and
+  job/webhook/MCP counters. Without an SDK it's all zero-cost no-ops.
 - The event log doubles as the interaction/audit trail (`/v1/events`) —
   `http.request` and `mcp.call` events carry status + latency, with request
   *bodies* deliberately excluded and private fields redacted from doc events.

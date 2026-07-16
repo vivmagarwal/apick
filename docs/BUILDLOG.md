@@ -44,6 +44,17 @@ accurate — it is the re-orientation point for long sessions.
 - 2026-07-16: CLI (`init/migrate/status`), examples (hello-world, blog),
   README, 11 guides, generated llms.txt/llms-full.txt. v0.1.0 feature-complete
   per ADR-0001 scope.
+- 2026-07-16 (publish-readiness pass, requested by Vivek): CORS (default-open,
+  restrictable), bring-your-own-IdP auth (`auth.verifyToken` + migration 002
+  external_id + ephemeral claim roles that can never confer operator), webhook
+  SSRF guard (create/patch/delivery-time, redirects refused; default follows
+  db kind), built-in retention pruning (events/jobs/versions via internal
+  cron), job concurrency (default 5) + graceful stop draining, auth TTL caches
+  with same-instance invalidation, write-field whitelists, OpenTelemetry
+  spans/metrics via @opentelemetry/api, request ids, /health/ready, graceful
+  HTTP shutdown, PGlite single-process lockfile, LICENSE/SECURITY/CONTRIBUTING/
+  CHANGELOG, scripts/bench.mjs. Suite now 18 files / 93 tests, all passing.
+  Deliberately skipped per Vivek: npm-name check (his), GitHub/CI (deferred).
 
 ## Notable semantics decided during build (documented in guides)
 

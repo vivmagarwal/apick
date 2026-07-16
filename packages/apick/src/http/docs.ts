@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { errors } from '../kernel/errors.js';
-import { assertCan } from '../auth/rbac.js';
+import { assertCan, assertFieldsWritable } from '../auth/rbac.js';
 import { storeContextFor } from '../app/core.js';
 import {
   createDoc,
@@ -94,6 +94,7 @@ export function docRoutes(): Hono<HonoEnv> {
     }
     const publish = body['publish'] === true;
     if (publish) assertCan(ctx, 'publish', `doc:${collection}`);
+    assertFieldsWritable(ctx, 'create', collection, Object.keys(body['data'] as Record<string, unknown>));
     const doc = await createDoc(core.db, col, storeContextFor(ctx, core), {
       data: body['data'] as Record<string, unknown>,
       locale: parseLocale(body['locale'] as string | undefined, core.config.defaultLocale),
@@ -130,6 +131,7 @@ export function docRoutes(): Hono<HonoEnv> {
     if (body['patch'] === undefined || typeof body['patch'] !== 'object' || body['patch'] === null || Array.isArray(body['patch'])) {
       throw errors.badRequest('Body must include a "patch" object (RFC 7386 merge patch)');
     }
+    assertFieldsWritable(ctx, 'update', collection, Object.keys(body['patch'] as Record<string, unknown>));
     const doc = await patchDoc(core.db, col, storeContextFor(ctx, core), {
       docId: c.req.param('docId'),
       patch: body['patch'] as Record<string, unknown>,
@@ -213,6 +215,8 @@ export function docRoutes(): Hono<HonoEnv> {
     const collection = c.req.param('collection');
     assertCan(ctx, 'update', `doc:${collection}`);
     const col = core.registry.get(collection).compiled;
+    // Restore rewrites the whole draft body: require unrestricted write access.
+    assertFieldsWritable(ctx, 'update', collection, Object.keys(col.fields));
     const version = Number.parseInt(c.req.param('version'), 10);
     if (!Number.isInteger(version) || version < 1) throw errors.badRequest('version must be a positive integer');
     const locale = parseLocale(c.req.query('locale'), core.config.defaultLocale);

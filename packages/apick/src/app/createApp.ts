@@ -1,12 +1,21 @@
 import type { Server } from 'node:http';
 import type { Hono } from 'hono';
+import { createAuthCaches } from '../kernel/cache.js';
 import { openDb, type Db } from '../kernel/db.js';
 import { errors } from '../kernel/errors.js';
 import { CronScheduler, type CronDefinition } from '../kernel/cron.js';
 import { enqueueJob, JobRunner, type EnqueueJobInput, type JobRow } from '../kernel/jobs.js';
 import { createLogger, silentLogger, type Logger, type LogLevel } from '../kernel/log.js';
 import { migrate, migrationStatus } from '../kernel/migrate.js';
-import type { TenantRow } from '../auth/rbac.js';
+import type { TenantRow, VerifyTokenHook } from '../auth/rbac.js';
+import {
+  createRetentionHandler,
+  resolveRetention,
+  retentionCronDef,
+  retentionEnabled,
+  RETENTION_QUEUE,
+  type RetentionConfig,
+} from './retention.js';
 import { Registry } from '../content/registry.js';
 import type { Collection } from '../schema/collection.js';
 import type { SavedQuery } from '../query/saved.js';
@@ -56,8 +65,43 @@ export interface ApickConfig {
   /** Map a request to a tenant slug/id (e.g. from the Host header). */
   resolveTenant?: (request: Request) => string | null | Promise<string | null>;
   interactionLog?: 'off' | 'mutations' | 'all';
-  /** Webhook delivery retry policy (default: 6 attempts, 1s exponential backoff). */
-  webhookRetry?: { maxAttempts?: number; backoffMs?: number };
+  /**
+   * Webhook behavior. `retry` defaults to 6 attempts / 1s exponential backoff.
+   * `allowPrivateTargets` is the SSRF policy: it defaults to true on embedded
+   * PGlite (local dev) and FALSE on Postgres — production webhook targets must
+   * resolve to public addresses unless you explicitly opt out.
+   */
+  webhooks?: {
+    retry?: { maxAttempts?: number; backoffMs?: number };
+    allowPrivateTargets?: boolean;
+    timeoutMs?: number;
+  };
+  /**
+   * Bring-your-own-IdP: verify a non-APIck bearer token (a JWT from your
+   * identity provider) and map it to an external identity. Returning null
+   * rejects the token. API keys are always checked first.
+   */
+  auth?: {
+    verifyToken?: VerifyTokenHook;
+  };
+  /**
+   * CORS. Default: enabled for all origins (auth is bearer-token based, not
+   * cookie based, so this is safe). Restrict with { origins: [...] } or
+   * disable with false.
+   */
+  cors?: boolean | { origins?: '*' | string[]; maxAge?: number };
+  /** Retention windows for events/jobs/versions; see docs/guides/deployment.md. */
+  retention?: RetentionConfig;
+  /** Parallel job handlers per worker process (default 5). */
+  jobConcurrency?: number;
+  /**
+   * TTL for the auth caches (tenant, key grants, public rules). Mutations on
+   * this instance invalidate immediately; other replicas converge within the
+   * TTL (e.g. key revocation). 0 disables caching. Default 5000ms.
+   */
+  authCacheTtlMs?: number;
+  /** Request body size limit in bytes (default 5MB). */
+  maxBodyBytes?: number;
   /** Add your own routes on the same Hono app (custom endpoints). */
   extend?: (app: Hono<HonoEnv>, core: AppCore) => void;
 }
@@ -78,7 +122,8 @@ export interface ApickApp {
   /** Enqueue a durable job (server-side). */
   enqueue: (input: EnqueueJobInput) => Promise<{ id: string; deduped: boolean }>;
   listen: (port?: number, hostname?: string) => Promise<{ url: string; port: number }>;
-  stop: () => Promise<void>;
+  /** Graceful shutdown: drain HTTP (up to gracefulMs, default 10s), finish in-flight jobs, close the db. */
+  stop: (options?: { gracefulMs?: number }) => Promise<void>;
 }
 
 export async function createApp(config: ApickConfig = {}): Promise<ApickApp> {
@@ -123,16 +168,37 @@ export async function createApp(config: ApickConfig = {}): Promise<ApickApp> {
     queries.set(q.key, q);
   }
 
+  // SSRF policy: local dev (embedded db) may target private addresses;
+  // production Postgres deployments must opt in explicitly.
+  const allowPrivateTargets = config.webhooks?.allowPrivateTargets ?? db.kind === 'pglite';
+
+  const corsConfig =
+    config.cors === false
+      ? (false as const)
+      : {
+          origins: (typeof config.cors === 'object' ? config.cors.origins : undefined) ?? ('*' as const),
+          maxAge: (typeof config.cors === 'object' ? config.cors.maxAge : undefined) ?? 600,
+        };
+
   const resolvedConfig: ResolvedConfig = {
     defaultLocale: config.defaultLocale ?? 'default',
     defaultTenantSlug: boot.defaultTenant.slug,
     interactionLog: config.interactionLog ?? 'mutations',
     resolveTenant: config.resolveTenant ?? null,
-    webhookRetry: {
-      maxAttempts: config.webhookRetry?.maxAttempts ?? DEFAULT_WEBHOOK_RETRY.maxAttempts,
-      backoffMs: config.webhookRetry?.backoffMs ?? DEFAULT_WEBHOOK_RETRY.backoffMs,
+    webhooks: {
+      retry: {
+        maxAttempts: config.webhooks?.retry?.maxAttempts ?? DEFAULT_WEBHOOK_RETRY.maxAttempts,
+        backoffMs: config.webhooks?.retry?.backoffMs ?? DEFAULT_WEBHOOK_RETRY.backoffMs,
+      },
+      allowPrivateTargets,
+      timeoutMs: config.webhooks?.timeoutMs ?? 10_000,
     },
+    cors: corsConfig,
+    maxBodyBytes: config.maxBodyBytes ?? 5 * 1024 * 1024,
+    verifyToken: config.auth?.verifyToken ?? null,
   };
+
+  const caches = createAuthCaches(config.authCacheTtlMs ?? 5000);
 
   const core: AppCore = {
     db,
@@ -141,15 +207,26 @@ export async function createApp(config: ApickConfig = {}): Promise<ApickApp> {
     config: resolvedConfig,
     log,
     defaultTenant: boot.defaultTenant,
+    caches,
     version: VERSION,
   };
 
-  // Durable jobs: internal webhook deliveries + user handlers.
+  // Durable jobs: internal webhook deliveries + retention + user handlers.
   const jobs = new JobRunner(db, {
     ...(config.pollIntervalMs !== undefined ? { pollIntervalMs: config.pollIntervalMs } : {}),
+    ...(config.jobConcurrency !== undefined ? { concurrency: config.jobConcurrency } : {}),
     logger: log,
   });
-  jobs.register(WEBHOOK_QUEUE, createDeliveryHandler(db));
+  jobs.register(
+    WEBHOOK_QUEUE,
+    createDeliveryHandler(db, { allowPrivateTargets, timeoutMs: resolvedConfig.webhooks.timeoutMs }),
+  );
+
+  const retention = resolveRetention(config.retention);
+  if (retentionEnabled(retention)) {
+    jobs.register(RETENTION_QUEUE, createRetentionHandler(db, retention, log));
+  }
+
   for (const [queue, handler] of Object.entries(config.jobs ?? {})) {
     if (queue.startsWith('apick.')) throw errors.badRequest(`Queue name "${queue}" is reserved (apick.*)`);
     jobs.register(queue, async (job: JobRow) => {
@@ -158,12 +235,15 @@ export async function createApp(config: ApickConfig = {}): Promise<ApickApp> {
   }
 
   for (const cron of config.crons ?? []) {
+    if (cron.key.startsWith('apick-')) throw errors.badRequest(`Cron key "${cron.key}" is reserved (apick-*)`);
     if (cron.queue.startsWith('apick.')) throw errors.badRequest(`Cron "${cron.key}" targets a reserved queue`);
     if (!(config.jobs ?? {})[cron.queue]) {
       throw errors.badRequest(`Cron "${cron.key}" targets queue "${cron.queue}" but no job handler is registered for it`);
     }
   }
-  const crons = new CronScheduler(db, config.crons ?? [], {
+  const cronDefs = [...(config.crons ?? [])];
+  if (retentionEnabled(retention)) cronDefs.push(retentionCronDef(retention));
+  const crons = new CronScheduler(db, cronDefs, {
     ...(config.tickIntervalMs !== undefined ? { tickIntervalMs: config.tickIntervalMs } : {}),
     logger: log,
   });
@@ -200,14 +280,25 @@ export async function createApp(config: ApickConfig = {}): Promise<ApickApp> {
       log.info('apick listening', { url: started.url });
       return { url: started.url, port: started.port };
     },
-    stop: async () => {
+    stop: async (options: { gracefulMs?: number } = {}) => {
+      // 1. stop accepting connections, drain in-flight HTTP (bounded)
+      if (server) await shutdownServer(server, options.gracefulMs ?? 10_000);
+      // 2. stop scheduling, then wait for in-flight jobs to finish
       await crons.stop();
       await jobs.stop();
-      if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
+      // 3. release the database
       await db.close();
     },
   };
   return app;
+}
+
+async function shutdownServer(server: Server, gracefulMs: number): Promise<void> {
+  const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+  server.closeIdleConnections();
+  const timer = setTimeout(() => server.closeAllConnections(), gracefulMs);
+  await closed;
+  clearTimeout(timer);
 }
 
 export { silentLogger };

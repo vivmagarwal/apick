@@ -1,4 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import type { AuthCaches } from '../kernel/cache.js';
 import type { Db, Queryable } from '../kernel/db.js';
 import { errors } from '../kernel/errors.js';
 import { isUuid, uuidv7 } from '../kernel/ids.js';
@@ -158,71 +159,184 @@ export async function createRole(
 
 // -- access resolution ----------------------------------------------------------
 
-async function publicRules(db: Queryable): Promise<PermissionRule[]> {
+/**
+ * Bring-your-own-IdP identity, returned by the `auth.verifyToken` hook after
+ * it verifies a non-APIck bearer token (a JWT from Auth0/Supabase/Clerk/…).
+ */
+export interface ExternalIdentity {
+  /** Stable subject from your IdP (e.g. the JWT `sub` claim). */
+  externalId: string;
+  kind?: 'user' | 'service' | 'agent';
+  name?: string;
+  email?: string;
+  /**
+   * Role keys applied within the RESOLVED TENANT for this request (drive them
+   * from IdP claims). Never confers operator scope — grant that persistently
+   * via POST /v1/grants if you really mean it.
+   */
+  roles?: string[];
+}
+
+export type VerifyTokenHook = (
+  token: string,
+  request: Request,
+) => Promise<ExternalIdentity | null> | ExternalIdentity | null;
+
+export interface ResolveAccessInput {
+  token: string | null;
+  tenantId: string;
+  via: AccessContext['via'];
+  caches?: AuthCaches;
+  verifyToken?: VerifyTokenHook | null;
+  request?: Request;
+}
+
+type GrantRow = {
+  tenant_id: string | null;
+  action: string;
+  resource: string;
+  fields: string[] | null;
+  condition: Record<string, unknown> | null;
+};
+
+async function publicRules(db: Queryable, caches?: AuthCaches): Promise<PermissionRule[]> {
+  const cached = caches?.publicRules.get('public') as PermissionRule[] | undefined;
+  if (cached) return cached;
   const { rows } = await db.query<PermissionRule>(sql`
     select p.action, p.resource, p.fields, p.condition
     from apick_permissions p
     join apick_roles r on r.id = p.role_id
     where r.key = 'public' and r.tenant_id is null
   `);
+  caches?.publicRules.set('public', rows);
   return rows;
 }
 
-export async function resolveAccess(
-  db: Db,
-  input: { token: string | null; tenantId: string; via: AccessContext['via'] },
-): Promise<AccessContext> {
-  const anonymous: AccessContext = {
-    principalId: null,
-    keyId: null,
-    via: input.via,
-    isOperator: false,
-    tenantId: input.tenantId,
-    rules: await publicRules(db),
-  };
-  if (!input.token) return anonymous;
-
-  const tokenHash = hashToken(input.token);
-  const { rows } = await db.query<KeyLookupRow>(sql`
-    select id as key_id, token_hash, principal_id, expires_at, revoked_at
-    from apick_api_keys where token_hash = ${tokenHash}
-  `);
-  const key = rows[0];
-  // timing-safe compare even though we looked up by hash (defense in depth)
-  if (!key || !timingSafeEqual(Buffer.from(key.token_hash), Buffer.from(tokenHash))) {
-    throw errors.unauthorized('Invalid API key');
-  }
-  if (key.revoked_at) throw errors.unauthorized('API key revoked');
-  if (key.expires_at && key.expires_at.getTime() < Date.now()) throw errors.unauthorized('API key expired');
-
-  db.query(sql`update apick_api_keys set last_used_at = now() where id = ${key.key_id}`).catch(() => {});
-
-  const { rows: grants } = await db.query<{ tenant_id: string | null; action: string; resource: string; fields: string[] | null; condition: Record<string, unknown> | null }>(sql`
+async function grantsFor(db: Queryable, principalId: string): Promise<GrantRow[]> {
+  const { rows } = await db.query<GrantRow>(sql`
     select g.tenant_id, p.action, p.resource, p.fields, p.condition
     from apick_role_grants g
     join apick_permissions p on p.role_id = g.role_id
-    where g.principal_id = ${key.principal_id}
+    where g.principal_id = ${principalId}
   `);
+  return rows;
+}
 
+function contextFromGrants(
+  base: { principalId: string; keyId: string | null; via: AccessContext['via']; tenantId: string },
+  grants: GrantRow[],
+  publicBaseline: PermissionRule[],
+  extraRules: PermissionRule[] = [],
+): AccessContext {
   const isOperator = grants.some((g) => g.tenant_id === null);
-  const applicable = grants.filter((g) => g.tenant_id === null || g.tenant_id === input.tenantId);
+  const applicable = grants.filter((g) => g.tenant_id === null || g.tenant_id === base.tenantId);
   const rules: PermissionRule[] = applicable.map((g) => ({
     action: g.action,
     resource: g.resource,
     fields: g.fields,
     condition: g.condition,
   }));
-  // Everyone also gets the public baseline.
-  rules.push(...(await publicRules(db)));
+  rules.push(...extraRules, ...publicBaseline);
+  return { ...base, isOperator, rules };
+}
 
-  return {
-    principalId: key.principal_id,
-    keyId: key.key_id,
-    via: input.via,
-    isOperator,
-    tenantId: input.tenantId,
-    rules,
-  };
+/** Permission rules of the given role keys, resolvable in this tenant (used for IdP-claim roles). */
+async function rulesForRoleKeys(db: Queryable, roleKeys: string[], tenantId: string): Promise<PermissionRule[]> {
+  if (roleKeys.length === 0) return [];
+  const { rows } = await db.query<PermissionRule>(sql`
+    select p.action, p.resource, p.fields, p.condition
+    from apick_permissions p
+    join apick_roles r on r.id = p.role_id
+    where r.key = any(${roleKeys}) and (r.tenant_id is null or r.tenant_id = ${tenantId})
+  `);
+  return rows;
+}
+
+async function resolveExternal(
+  db: Db,
+  identity: ExternalIdentity,
+  input: ResolveAccessInput,
+): Promise<AccessContext> {
+  if (typeof identity.externalId !== 'string' || identity.externalId.length === 0 || identity.externalId.length > 255) {
+    throw errors.unauthorized('Identity provider returned an invalid externalId');
+  }
+  type Bundle = { principalId: string; grants: GrantRow[] };
+  let bundle = input.caches?.externals.get(identity.externalId) as Bundle | undefined;
+  if (!bundle) {
+    const { rows } = await db.query<{ id: string }>(sql`
+      insert into apick_principals (id, kind, name, email, external_id)
+      values (${uuidv7()}, ${identity.kind ?? 'user'}, ${identity.name ?? identity.externalId}, ${identity.email ?? null}, ${identity.externalId})
+      on conflict (external_id) where external_id is not null
+      do update set name = excluded.name, email = excluded.email
+      returning id
+    `);
+    const principalId = rows[0]!.id;
+    bundle = { principalId, grants: await grantsFor(db, principalId) };
+    input.caches?.externals.set(identity.externalId, bundle);
+  }
+  // Claim-driven roles are ephemeral and tenant-scoped by construction: they can
+  // never confer operator scope (contextFromGrants derives isOperator from
+  // PERSISTENT grants only).
+  const claimRules = await rulesForRoleKeys(db, identity.roles ?? [], input.tenantId);
+  return contextFromGrants(
+    { principalId: bundle.principalId, keyId: null, via: input.via, tenantId: input.tenantId },
+    bundle.grants,
+    await publicRules(db, input.caches),
+    claimRules,
+  );
+}
+
+export async function resolveAccess(db: Db, input: ResolveAccessInput): Promise<AccessContext> {
+  if (!input.token) {
+    return {
+      principalId: null,
+      keyId: null,
+      via: input.via,
+      isOperator: false,
+      tenantId: input.tenantId,
+      rules: await publicRules(db, input.caches),
+    };
+  }
+
+  // 1) APIck API key?
+  const tokenHash = hashToken(input.token);
+  type KeyBundle = { key: KeyLookupRow; grants: GrantRow[] };
+  let bundle = input.caches?.keys.get(tokenHash) as KeyBundle | undefined;
+  const fromCache = bundle !== undefined;
+  if (!bundle) {
+    const { rows } = await db.query<KeyLookupRow>(sql`
+      select id as key_id, token_hash, principal_id, expires_at, revoked_at
+      from apick_api_keys where token_hash = ${tokenHash}
+    `);
+    const key = rows[0];
+    // timing-safe compare even though we looked up by hash (defense in depth)
+    if (key && timingSafeEqual(Buffer.from(key.token_hash), Buffer.from(tokenHash))) {
+      bundle = { key, grants: await grantsFor(db, key.principal_id) };
+      if (!key.revoked_at) input.caches?.keys.set(tokenHash, bundle);
+    }
+  }
+
+  if (bundle) {
+    const { key } = bundle;
+    if (key.revoked_at) throw errors.unauthorized('API key revoked');
+    if (key.expires_at && new Date(key.expires_at).getTime() < Date.now()) throw errors.unauthorized('API key expired');
+    if (!fromCache) {
+      db.query(sql`update apick_api_keys set last_used_at = now() where id = ${key.key_id}`).catch(() => {});
+    }
+    return contextFromGrants(
+      { principalId: key.principal_id, keyId: key.key_id, via: input.via, tenantId: input.tenantId },
+      bundle.grants,
+      await publicRules(db, input.caches),
+    );
+  }
+
+  // 2) Bring-your-own-IdP token?
+  if (input.verifyToken && input.request) {
+    const identity = await input.verifyToken(input.token, input.request);
+    if (identity) return resolveExternal(db, identity, input);
+  }
+
+  throw errors.unauthorized('Invalid API key');
 }
 
 // -- permission checks -----------------------------------------------------------
@@ -262,6 +376,28 @@ export function readableFields(ctx: AccessContext, collection: string): string[]
   if (rules.length === 0) return [];
   if (rules.some((r) => r.fields === null)) return null;
   return [...new Set(rules.flatMap((r) => r.fields!))];
+}
+
+/**
+ * Effective writable-field whitelist for create/update, or null for "all
+ * fields". Union across matching rules — a rule with `fields` restricts which
+ * TOP-LEVEL fields its holder may write.
+ */
+export function writableFields(ctx: AccessContext, action: 'create' | 'update', collection: string): string[] | null {
+  const rules = rulesFor(ctx, action, `doc:${collection}`);
+  if (rules.length === 0) return [];
+  if (rules.some((r) => r.fields === null)) return null;
+  return [...new Set(rules.flatMap((r) => r.fields!))];
+}
+
+export function assertFieldsWritable(ctx: AccessContext, action: 'create' | 'update', collection: string, keys: string[]): void {
+  const allowed = writableFields(ctx, action, collection);
+  if (allowed === null) return;
+  for (const key of keys) {
+    if (!allowed.includes(key)) {
+      throw errors.forbidden(`Field "${key}" is not writable with your permissions`, );
+    }
+  }
 }
 
 /**

@@ -15,7 +15,7 @@ describe('reliable webhooks', () => {
     const { collections } = blogCollections();
     running = await startApp({
       collections,
-      webhookRetry: { maxAttempts: 3, backoffMs: 60 }, // fast retries for tests
+      webhooks: { retry: { maxAttempts: 3, backoffMs: 60 } }, // fast retries for tests
     });
   });
 

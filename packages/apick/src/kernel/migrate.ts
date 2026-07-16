@@ -211,6 +211,16 @@ const MIGRATIONS: Migration[] = [
       `create index apick_deliveries_webhook on apick_deliveries (webhook_id, created_at)`,
     ],
   },
+  {
+    version: 2,
+    name: 'external-identities',
+    statements: [
+      // Bring-your-own-IdP: principals verified by the auth.verifyToken hook
+      // are keyed by their IdP subject.
+      `alter table apick_principals add column external_id text`,
+      `create unique index apick_principals_external on apick_principals (external_id) where external_id is not null`,
+    ],
+  },
 ];
 
 export async function migrate(db: Db): Promise<{ applied: string[] }> {

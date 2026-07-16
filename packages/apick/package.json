@@ -1,7 +1,7 @@
 {
   "name": "apick",
   "version": "0.1.0",
-  "description": "APIck — API Construction Kit. Pure-headless, AI-first application platform: content types, RBAC, REST, webhooks, MCP, durable jobs on Postgres.",
+  "description": "APIck \u2014 API Construction Kit. Pure-headless, AI-first application platform: content types, RBAC, REST, webhooks, MCP, durable jobs on Postgres.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -21,7 +21,9 @@
     "apick": "./dist/cli/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "README.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -30,11 +32,26 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.3.0",
     "@modelcontextprotocol/sdk": "^1.15.0",
+    "@opentelemetry/api": "^1.9.1",
     "@sinclair/typebox": "^0.34.0",
     "hono": "^4.8.0",
     "pg": "^8.16.0"
   },
   "devDependencies": {
     "@types/pg": "^8.15.0"
-  }
+  },
+  "keywords": [
+    "headless-cms",
+    "cms",
+    "api",
+    "mcp",
+    "webhooks",
+    "rbac",
+    "multi-tenant",
+    "postgres",
+    "pglite",
+    "ai",
+    "framework"
+  ],
+  "author": "Vivek M Agarwal"
 }

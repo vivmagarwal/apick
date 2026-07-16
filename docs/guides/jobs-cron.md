@@ -64,4 +64,26 @@ await createApp({
 Every `createApp` process runs a worker + cron ticker by default. For a
 dedicated worker fleet, serve HTTP with `worker: false` and run worker-only
 processes (`createApp({ worker: true })` without calling `listen`). Tune with
-`pollIntervalMs` (default 500) and `tickIntervalMs` (default 1000).
+`pollIntervalMs` (default 500), `tickIntervalMs` (default 1000) and
+`jobConcurrency` (parallel handlers per process, default 5). `app.stop()`
+finishes in-flight jobs before returning.
+
+## Retention (built-in pruning)
+
+Events, finished jobs and (optionally) version history are pruned by a
+built-in daily job — cluster-single-fire like any cron:
+
+```ts
+await createApp({
+  retention: {
+    events:   { days: 90 },                 // default; false disables
+    jobs:     { doneDays: 7, deadDays: 30 },// default; false disables
+    versions: { keepLast: 50 },             // DEFAULT: keep everything
+    schedule: '47 3 * * *',
+  },
+});
+```
+
+Guarantees: document heads and the versions they point at always survive;
+events still awaiting a webhook delivery are never pruned; version history is
+untouched unless you explicitly set `keepLast`.

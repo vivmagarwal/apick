@@ -1,3 +1,4 @@
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { ApickError } from './errors.js';
 import type { SqlFragment } from './sql.js';
 
@@ -87,9 +88,11 @@ type PgliteInstance = import('@electric-sql/pglite').PGlite;
 class PgliteDb implements Db {
   readonly kind = 'pglite' as const;
   #db: PgliteInstance;
+  #onClose: (() => void) | undefined;
 
-  constructor(db: PgliteInstance) {
+  constructor(db: PgliteInstance, onClose?: () => void) {
     this.#db = db;
+    this.#onClose = onClose;
   }
 
   async query<T = Record<string, unknown>>(frag: SqlFragment): Promise<QueryResult<T>> {
@@ -125,7 +128,49 @@ class PgliteDb implements Db {
 
   async close(): Promise<void> {
     await this.#db.close();
+    this.#onClose?.();
   }
+}
+
+/**
+ * PGlite supports exactly ONE instance per data directory. Guard with a pid
+ * lockfile so a second process (or a second createApp in the same process)
+ * fails with a clear error instead of corrupting the database.
+ */
+function acquirePgliteLock(dir: string): () => void {
+  // The lockfile lives BESIDE the data directory: PGlite requires its data
+  // dir to be empty on first init, so we must not write into it.
+  const normalized = dir.replace(/\/+$/, '');
+  const parent = normalized.includes('/') ? normalized.slice(0, normalized.lastIndexOf('/')) : '.';
+  mkdirSync(parent, { recursive: true });
+  const lockPath = `${normalized}.apick-lock`;
+  if (existsSync(lockPath)) {
+    const holder = Number.parseInt(readFileSync(lockPath, 'utf8'), 10);
+    let alive = false;
+    if (Number.isInteger(holder)) {
+      try {
+        process.kill(holder, 0);
+        alive = true;
+      } catch {
+        alive = false; // stale lock from a dead process — take over
+      }
+    }
+    if (alive) {
+      throw new ApickError(
+        'conflict',
+        `PGlite database at "${dir}" is already open (pid ${holder}). ` +
+          `PGlite supports a single instance per directory — use postgres:// for multi-process setups.`,
+      );
+    }
+  }
+  writeFileSync(lockPath, String(process.pid));
+  return () => {
+    try {
+      rmSync(lockPath, { force: true });
+    } catch {
+      /* best effort */
+    }
+  };
 }
 
 export interface DatabaseConfig {
@@ -154,9 +199,20 @@ export async function openDb(config: DatabaseConfig = {}): Promise<Db> {
   if (url.startsWith('pglite://')) {
     const target = url.slice('pglite://'.length);
     const { PGlite } = await import('@electric-sql/pglite');
-    const db = target === 'memory' ? new PGlite() : new PGlite(target);
-    await db.waitReady;
-    return new PgliteDb(db);
+    if (target === 'memory') {
+      const db = new PGlite();
+      await db.waitReady;
+      return new PgliteDb(db);
+    }
+    const releaseLock = acquirePgliteLock(target);
+    try {
+      const db = new PGlite(target);
+      await db.waitReady;
+      return new PgliteDb(db, releaseLock);
+    } catch (err) {
+      releaseLock();
+      throw err;
+    }
   }
 
   throw new ApickError('bad_request', `Unsupported database url scheme: ${url.split('://')[0]}://`);

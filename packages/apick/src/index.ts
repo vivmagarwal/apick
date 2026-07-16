@@ -23,5 +23,6 @@ export { migrate, migrationStatus } from './kernel/migrate.js';
 export { createLogger, silentLogger, type Logger, type LogLevel } from './kernel/log.js';
 export type { CronDefinition } from './kernel/cron.js';
 export type { EnqueueJobInput, JobRow } from './kernel/jobs.js';
-export type { PermissionRule, AccessContext, TenantRow } from './auth/rbac.js';
+export type { PermissionRule, AccessContext, TenantRow, ExternalIdentity, VerifyTokenHook } from './auth/rbac.js';
+export type { RetentionConfig } from './app/retention.js';
 export { VERSION } from './version.js';

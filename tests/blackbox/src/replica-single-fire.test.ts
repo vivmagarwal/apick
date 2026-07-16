@@ -30,7 +30,8 @@ describe.skipIf(!pgUrl())('replica safety on real Postgres', () => {
         migrate: 'apply' as const,
         pollIntervalMs: 25,
         tickIntervalMs: 100,
-        webhookRetry: { maxAttempts: 3, backoffMs: 60 },
+        // the receivers in this test are loopback; opt out of the SSRF guard
+        webhooks: { retry: { maxAttempts: 3, backoffMs: 60 }, allowPrivateTargets: true },
         jobs: {
           'tick-counter': async (payload: Record<string, unknown>) => {
             cronRuns.push(`${name}:${String(payload['scheduledFor'])}`);

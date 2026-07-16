@@ -68,6 +68,17 @@ POST /v1/deliveries/:id/replay                  # re-deliver after you fix the r
   two live instances).
 - Disable/enable without losing config: `PATCH /v1/webhooks/:id {"enabled": false}`.
 
+## SSRF protection
+
+Webhook URLs are tenant-controlled input, so the delivery worker refuses
+private targets by default in production: loopback, RFC1918, link-local
+(cloud metadata!), CGNAT, `.local`/`.internal` hostnames — checked when a
+webhook is created or its URL changed, and re-checked at every delivery (DNS
+answers change). Redirects are never followed (a 3xx counts as a failed
+attempt). The default follows your database: embedded PGlite (local dev)
+allows private targets so localhost receivers just work; Postgres blocks them.
+Override explicitly with `webhooks: { allowPrivateTargets: true | false }`.
+
 ## Change feed without webhooks
 
 The same event log is pollable with a cursor — useful for agents and batch

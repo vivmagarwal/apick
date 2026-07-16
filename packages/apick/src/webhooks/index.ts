@@ -1,6 +1,8 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Db, Queryable } from '../kernel/db.js';
 import { errors } from '../kernel/errors.js';
+import { assertPublicWebhookTarget } from './ssrf.js';
+import { metricsBundle } from '../kernel/telemetry.js';
 import type { EventRow } from '../kernel/events.js';
 import { uuidv7 } from '../kernel/ids.js';
 import { enqueueJob, type JobRow } from '../kernel/jobs.js';
@@ -113,6 +115,8 @@ export function verifyWebhookSignature(
 
 export interface DeliveryHandlerOptions {
   timeoutMs?: number;
+  /** Permit deliveries to private/internal addresses (defaults follow the app's SSRF policy). */
+  allowPrivateTargets?: boolean;
   /** Test seam: swap the HTTP transport. */
   fetchImpl?: typeof fetch;
 }
@@ -155,6 +159,11 @@ export function createDeliveryHandler(db: Db, options: DeliveryHandlerOptions = 
     let status: number | null = null;
     let error: string | null = null;
     try {
+      // Re-check the target at delivery time: DNS answers change, and a
+      // "public" hostname must not be allowed to drift into the private network.
+      if (!options.allowPrivateTargets) {
+        await assertPublicWebhookTarget(delivery.url);
+      }
       const res = await fetchImpl(delivery.url, {
         method: 'POST',
         headers: {
@@ -168,22 +177,30 @@ export function createDeliveryHandler(db: Db, options: DeliveryHandlerOptions = 
         },
         body,
         signal: AbortSignal.timeout(timeoutMs),
+        // Redirect-following would let a public endpoint bounce us to an
+        // internal one; a webhook receiver has no business redirecting.
+        redirect: 'manual',
       });
       status = res.status;
-      if (res.ok) {
+      if (res.status >= 300 && res.status < 400) {
+        error = `HTTP ${status} (redirects are not followed)`;
+      } else if (res.ok) {
         await db.query(sql`
           update apick_deliveries
           set state = 'success', attempts = ${job.attempts}, last_status = ${status}, last_error = null, delivered_at = now()
           where id = ${deliveryId}
         `);
+        metricsBundle.webhookDeliveries.add(1, { 'apick.outcome': 'success' });
         return;
+      } else {
+        error = `HTTP ${status}`;
       }
-      error = `HTTP ${status}`;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     }
 
     const finalAttempt = job.attempts >= job.max_attempts;
+    metricsBundle.webhookDeliveries.add(1, { 'apick.outcome': finalAttempt ? 'dead' : 'retry' });
     await db.query(sql`
       update apick_deliveries
       set state = ${finalAttempt ? 'dead' : 'pending'}, attempts = ${job.attempts}, last_status = ${status}, last_error = ${error},
@@ -196,17 +213,23 @@ export function createDeliveryHandler(db: Db, options: DeliveryHandlerOptions = 
 
 // -- management ----------------------------------------------------------------
 
-export async function createWebhook(
-  db: Queryable,
-  input: { tenantId: string; name: string; url: string; events?: string[]; headers?: Record<string, string>; secret?: string },
-): Promise<WebhookRow & { secret: string }> {
+export async function validateWebhookUrl(url: string, allowPrivateTargets: boolean): Promise<void> {
   let parsed: URL;
   try {
-    parsed = new URL(input.url);
+    parsed = new URL(url);
   } catch {
     throw errors.validation('Webhook url is not a valid URL');
   }
   if (!['http:', 'https:'].includes(parsed.protocol)) throw errors.validation('Webhook url must be http(s)');
+  if (!allowPrivateTargets) await assertPublicWebhookTarget(url);
+}
+
+export async function createWebhook(
+  db: Queryable,
+  input: { tenantId: string; name: string; url: string; events?: string[]; headers?: Record<string, string>; secret?: string },
+  options: { allowPrivateTargets?: boolean } = {},
+): Promise<WebhookRow & { secret: string }> {
+  await validateWebhookUrl(input.url, options.allowPrivateTargets ?? false);
   const id = uuidv7();
   const secret = input.secret ?? `whsec_${randomBytes(24).toString('base64url')}`;
   const { rows } = await db.query<WebhookRow>(sql`

@@ -70,8 +70,11 @@ CMSes (studied in depth: Strapi) cannot fix without breaking their ecosystems:
   planner; `x-apick-tenant` header or a `resolveTenant(request)` hook; operator
   scope provisions and oversees tenants. Single-tenant = N=1, invisible.
 - **RBAC** — built-in roles (`operator-admin`, `tenant-admin`, `content-editor`,
-  `content-reader`, `public`) plus custom roles with per-field whitelists and
-  row conditions (`"$me"` = caller). Additive/union semantics.
+  `content-reader`, `public`) plus custom roles with per-field read AND write
+  whitelists and row conditions (`"$me"` = caller). Additive/union semantics.
+- **Auth** — hashed API keys for services/agents, plus bring-your-own-IdP:
+  a `verifyToken` hook maps your JWTs (Auth0/Supabase/Clerk/…) into the same
+  principal + RBAC model. One auth system, cached, revocation-safe.
 - **Webhooks** — signed (`apick-signature`), at-least-once, exponential backoff,
   dead-letter, replay endpoint, per-event patterns (`doc.published:articles`).
 - **Jobs & cron** — durable Postgres-native queue with retries/backoff/dead-letter/
@@ -82,6 +85,10 @@ CMSes (studied in depth: Strapi) cannot fix without breaking their ecosystems:
   cursor (`GET /v1/events?afterSeq=`).
 - **MCP** — stateless streamable-HTTP server at `/mcp`; schema-derived tools;
   least-privilege via the same keys; every mutation attributed in the audit log.
+- **Production posture** — CORS (default-safe for bearer auth), SSRF-guarded
+  webhook targets, built-in retention/pruning, graceful shutdown, liveness +
+  readiness probes, request ids, OpenTelemetry spans/metrics via
+  `@opentelemetry/api` (no-op until you register an SDK).
 - **Portability** — `GET /v1/export` / `POST /v1/import` round-trip losslessly
   (uuid7 ids are portable); plain-SQL escape hatch — it's just Postgres.
 - **Self-description** — live `/openapi.json`, `/llms.txt`, `/llms-full.txt`
@@ -93,8 +100,9 @@ There are no unit-coverage tests. Every promise above has a black-box test that
 boots real instances and talks HTTP/MCP — and fails if the promise breaks:
 private fields stay unfilterable, two replicas never double-fire a cron (real
 Postgres, two live apps), a rename preserves data across restarts, export→import
-is byte-identical, a real MCP SDK client round-trips. See
-[`tests/blackbox/`](tests/blackbox/src) — 14 suites, 72 tests.
+is byte-identical, a real MCP SDK client round-trips, webhook workers refuse to
+reach the private network, retention prunes on schedule. See
+[`tests/blackbox/`](tests/blackbox/src) — 18 suites, 93 tests.
 
 ```bash
 pnpm install && pnpm test        # Docker enables the real-Postgres suites
@@ -121,9 +129,10 @@ pnpm install && pnpm test        # Docker enables the real-Postgres suites
 
 v1 focuses on a small, stable core. Explicitly out (see
 [ADR-0001](docs/decisions/0001-architecture.md)): GraphQL, media pipeline, the
-OAuth-connector framework, no-code automations, schema-per-tenant isolation,
-SSE change-feed transport, i18n fallback chains. The primitives they need
-(event log, jobs, planner-scoped tokens) are already here.
+OAuth-connector framework, deep multi-step durable automations,
+schema-per-tenant isolation, SSE change-feed transport, i18n fallback chains.
+The primitives they need (event log, durable jobs, planner-scoped tokens,
+pluggable auth) are already here.
 
 MIT licensed.
 
@@ -483,8 +492,11 @@ POST /v1/roles
 POST /v1/grants  { "principalId": "…", "roleKey": "support" }
 ```
 
-- **`fields`** — a read whitelist. Enforced by the planner: fields outside it
-  are unprojectable AND unfilterable/unsortable (rejected like unknown fields).
+- **`fields`** — a field whitelist. On `read`/`readDraft` rules it's enforced by
+  the planner: fields outside it are unprojectable AND unfilterable/unsortable
+  (rejected like unknown fields). On `create`/`update` rules it restricts which
+  top-level fields the holder may WRITE (403 otherwise); restoring a version
+  rewrites the whole body and therefore requires unrestricted write.
 - **`condition`** — a row filter (same JSON grammar as queries) AND-ed into
   every read the role performs. `"$me"` substitutes the caller's principal id.
   Non-matching documents are invisible (404), not forbidden.
@@ -492,11 +504,55 @@ POST /v1/grants  { "principalId": "…", "roleKey": "support" }
   no deny rules; on a `publicRead` collection no role can see less than
   anonymous. Restrictions are meaningful on non-public collections.
 
+## Bring your own identity provider (end-user auth)
+
+Apps with human users keep their IdP (Auth0, Supabase Auth, Clerk, Keycloak,
+your own JWTs). Give APIck a verifier and IdP tokens become principals in the
+SAME model — no second auth system:
+
+```ts
+import { jwtVerify } from 'jose';
+
+const app = await createApp({
+  auth: {
+    verifyToken: async (token, request) => {
+      try {
+        const { payload } = await jwtVerify(token, jwks, { issuer, audience });
+        return {
+          externalId: payload.sub,                    // stable IdP subject
+          name: payload.name, email: payload.email,
+          // map IdP claims to APIck role keys, applied in the resolved tenant:
+          roles: payload['https://myapp/roles'] ?? ['content-reader'],
+        };
+      } catch { return null; }                        // invalid token → 401
+    },
+  },
+});
+```
+
+Semantics (all black-box tested in `byo-auth.test.ts`):
+
+- API keys are checked first; the hook only sees non-key bearer tokens.
+- A principal is upserted per `externalId` (kind `user`), so audit events are
+  attributed stably across sessions.
+- `roles` from claims are **ephemeral and tenant-scoped** — they can never
+  confer operator scope. Persistent grants (`POST /v1/grants` with the
+  principal id from `GET /v1/principals`) layer on top and CAN.
+- Returning `null` rejects the token (401). Hook errors are 500s — fail closed.
+
 ## Anonymous access
 
 No token → the `public` role in the resolved tenant. Introspection
 (`/v1/collections`), reads, saved queries and MCP all honor it. Everything else
 is `401`.
+
+## Caching & revocation
+
+Auth lookups (key→grants, tenant, public rules) are cached for
+`authCacheTtlMs` (default 5s; 0 disables). Mutations through the API clear the
+cache on that instance immediately; other replicas converge within the TTL —
+so a revoked key dies instantly where you revoked it and cluster-wide within
+~5 seconds.
 
 ## Private fields vs field whitelists
 
@@ -647,6 +703,17 @@ POST /v1/deliveries/:id/replay                  # re-deliver after you fix the r
   two live instances).
 - Disable/enable without losing config: `PATCH /v1/webhooks/:id {"enabled": false}`.
 
+## SSRF protection
+
+Webhook URLs are tenant-controlled input, so the delivery worker refuses
+private targets by default in production: loopback, RFC1918, link-local
+(cloud metadata!), CGNAT, `.local`/`.internal` hostnames — checked when a
+webhook is created or its URL changed, and re-checked at every delivery (DNS
+answers change). Redirects are never followed (a 3xx counts as a failed
+attempt). The default follows your database: embedded PGlite (local dev)
+allows private targets so localhost receivers just work; Postgres blocks them.
+Override explicitly with `webhooks: { allowPrivateTargets: true | false }`.
+
 ## Change feed without webhooks
 
 The same event log is pollable with a cursor — useful for agents and batch
@@ -726,7 +793,29 @@ await createApp({
 Every `createApp` process runs a worker + cron ticker by default. For a
 dedicated worker fleet, serve HTTP with `worker: false` and run worker-only
 processes (`createApp({ worker: true })` without calling `listen`). Tune with
-`pollIntervalMs` (default 500) and `tickIntervalMs` (default 1000).
+`pollIntervalMs` (default 500), `tickIntervalMs` (default 1000) and
+`jobConcurrency` (parallel handlers per process, default 5). `app.stop()`
+finishes in-flight jobs before returning.
+
+## Retention (built-in pruning)
+
+Events, finished jobs and (optionally) version history are pruned by a
+built-in daily job — cluster-single-fire like any cron:
+
+```ts
+await createApp({
+  retention: {
+    events:   { days: 90 },                 // default; false disables
+    jobs:     { doneDays: 7, deadDays: 30 },// default; false disables
+    versions: { keepLast: 50 },             // DEFAULT: keep everything
+    schedule: '47 3 * * *',
+  },
+});
+```
+
+Guarantees: document heads and the versions they point at always survive;
+events still awaiting a webhook delivery are never pruned; version history is
+untouched unless you explicitly set `keepLast`.
 
 
 ---
@@ -854,9 +943,49 @@ hook and it scopes everything.
 - API keys are stored hashed (SHA-256); webhook secrets are stored to sign
   payloads. Use scoped keys with `expiresAt` for CI and agents.
 
+## CORS
+
+Enabled for all origins by default — safe because auth is bearer-token based
+(no cookies, so no CSRF surface). Restrict or disable per install:
+
+```ts
+await createApp({ cors: { origins: ['https://app.example.com'] } }); // or cors: false
+```
+
+## Probes & shutdown
+
+- `GET /health` — liveness (no dependencies)
+- `GET /health/ready` — readiness (database reachable); returns 503 otherwise
+- `app.stop({ gracefulMs })` — stops accepting connections, drains in-flight
+  HTTP (default 10s), finishes in-flight jobs, then closes the database. Wire
+  it to SIGTERM:
+
+```ts
+process.on('SIGTERM', () => app.stop().then(() => process.exit(0)));
+```
+
+## Retention
+
+Events and finished jobs are pruned automatically (90/7/30-day defaults);
+version history only if you opt in. See [jobs-cron.md](jobs-cron.md#retention-built-in-pruning).
+
+## Performance notes
+
+- Auth lookups are cached per instance (`authCacheTtlMs`, default 5s; see
+  [auth-rbac.md](auth-rbac.md#caching--revocation) for revocation semantics).
+- `scripts/bench.mjs` measures the full HTTP stack; embedded PGlite is a
+  single connection (fine for dev), real Postgres with the pool is what
+  production numbers should be taken on.
+
 ## Observability
 
 - Structured JSON logs (pino-shaped) on stdout; inject your own with `logger`.
+- Every response carries `x-request-id` (yours is propagated if well-formed).
+- **OpenTelemetry out of the box**: APIck instruments against
+  `@opentelemetry/api` — register any OTel SDK in your process (NodeSDK, a
+  tracer provider) and you get `apick.http.request`, `apick.job.run`,
+  `apick.mcp.tool_call` spans plus request-duration histograms and
+  job/webhook/MCP counters. Without an SDK it's all zero-cost no-ops.
 - The event log doubles as the interaction/audit trail (`/v1/events`) —
   `http.request` and `mcp.call` events carry status + latency, with request
   *bodies* deliberately excluded and private fields redacted from doc events.

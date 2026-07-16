@@ -3,6 +3,7 @@ import { uuidv7 } from './ids.js';
 import type { Logger } from './log.js';
 import { silentLogger } from './log.js';
 import { sql } from './sql.js';
+import { metricsBundle, withSpan } from './telemetry.js';
 
 /**
  * Durable, replica-safe job runner on plain Postgres.
@@ -61,6 +62,8 @@ export interface JobRunnerOptions {
   pollIntervalMs?: number;
   /** How long a claimed job may run before another worker may rescue it. */
   lockTimeoutMs?: number;
+  /** How many jobs this worker runs in parallel (default 5). */
+  concurrency?: number;
   workerId?: string;
   logger?: Logger;
 }
@@ -70,16 +73,20 @@ export class JobRunner {
   #handlers = new Map<string, JobHandler>();
   #pollIntervalMs: number;
   #lockTimeoutMs: number;
+  #concurrency: number;
   #workerId: string;
   #log: Logger;
   #running = false;
-  #timer: NodeJS.Timeout | null = null;
-  #activeLoop: Promise<void> | null = null;
+  #inflight = new Set<Promise<void>>();
+  #wake: (() => void) | null = null;
+  #dispatcher: Promise<void> | null = null;
+  #lastRescue = 0;
 
   constructor(db: Db, options: JobRunnerOptions = {}) {
     this.#db = db;
     this.#pollIntervalMs = options.pollIntervalMs ?? 500;
     this.#lockTimeoutMs = options.lockTimeoutMs ?? 60_000;
+    this.#concurrency = Math.max(1, options.concurrency ?? 5);
     this.#workerId = options.workerId ?? `worker-${uuidv7().slice(0, 8)}`;
     this.#log = (options.logger ?? silentLogger).child({ component: 'jobs', workerId: this.#workerId });
   }
@@ -95,38 +102,61 @@ export class JobRunner {
   start(): void {
     if (this.#running) return;
     this.#running = true;
-    const loop = async (): Promise<void> => {
-      if (!this.#running) return;
-      let drained = false;
-      try {
-        await this.#rescueExpired();
-        drained = !(await this.#claimAndRunOne());
-      } catch (err) {
-        this.#log.error('job loop error', { error: String(err) });
-        drained = true;
-      }
-      if (!this.#running) return;
-      // Immediately re-poll while there is work; back off when drained.
-      const delay = drained ? this.#pollIntervalMs : 0;
-      this.#timer = setTimeout(() => {
-        this.#activeLoop = loop();
-      }, delay);
-    };
-    this.#activeLoop = loop();
+    this.#dispatcher = this.#dispatchLoop();
   }
 
+  /**
+   * Keep up to `concurrency` claimed jobs running; claim eagerly while work
+   * exists, sleep for pollIntervalMs when the queue is drained or full.
+   */
+  async #dispatchLoop(): Promise<void> {
+    while (this.#running) {
+      let idle = true;
+      try {
+        // rescue crashed workers' jobs at most once per lock window
+        if (Date.now() - this.#lastRescue > Math.max(this.#pollIntervalMs, this.#lockTimeoutMs / 4)) {
+          this.#lastRescue = Date.now();
+          await this.#rescueExpired();
+        }
+        while (this.#running && this.#inflight.size < this.#concurrency) {
+          const job = await this.#claimOne();
+          if (!job) break;
+          idle = false;
+          const run = this.#runClaimed(job).finally(() => {
+            this.#inflight.delete(run);
+            this.#wake?.();
+          });
+          this.#inflight.add(run);
+        }
+      } catch (err) {
+        this.#log.error('job dispatch error', { error: String(err) });
+      }
+      if (!this.#running) break;
+      if (idle || this.#inflight.size >= this.#concurrency) {
+        await new Promise<void>((resolve) => {
+          this.#wake = resolve;
+          setTimeout(resolve, this.#pollIntervalMs);
+        });
+        this.#wake = null;
+      }
+    }
+  }
+
+  /** Stops claiming, then waits for every in-flight handler to finish. */
   async stop(): Promise<void> {
     this.#running = false;
-    if (this.#timer) clearTimeout(this.#timer);
-    await this.#activeLoop?.catch(() => {});
+    this.#wake?.();
+    await this.#dispatcher?.catch(() => {});
+    await Promise.allSettled([...this.#inflight]);
   }
 
   /** Run pending jobs until the queue is drained (test + CLI helper). */
   async drain(maxJobs = 1000): Promise<number> {
     let count = 0;
     while (count < maxJobs) {
-      const ran = await this.#claimAndRunOne();
-      if (!ran) break;
+      const job = await this.#claimOne();
+      if (!job) break;
+      await this.#runClaimed(job);
       count++;
     }
     return count;
@@ -141,9 +171,9 @@ export class JobRunner {
     `);
   }
 
-  async #claimAndRunOne(): Promise<boolean> {
+  async #claimOne(): Promise<JobRow | null> {
     const queues = [...this.#handlers.keys()];
-    if (queues.length === 0) return false;
+    if (queues.length === 0) return null;
 
     const { rows } = await this.#db.query<JobRow>(sql`
       update apick_jobs
@@ -157,12 +187,14 @@ export class JobRunner {
       )
       returning id, tenant_id, queue, payload, state, run_at, attempts, max_attempts, backoff_ms, idempotency_key, last_error
     `);
-    const job = rows[0];
-    if (!job) return false;
+    return rows[0] ?? null;
+  }
 
+  async #runClaimed(job: JobRow): Promise<void> {
     const handler = this.#handlers.get(job.queue)!;
     try {
-      await handler(job);
+      await withSpan('apick.job.run', { 'apick.queue': job.queue, 'apick.attempt': job.attempts }, () => handler(job));
+      metricsBundle.jobRuns.add(1, { 'apick.queue': job.queue, 'apick.outcome': 'done' });
       await this.#db.query(sql`
         update apick_jobs set state = 'done', finished_at = now(), locked_by = null, locked_at = null
         where id = ${job.id}
@@ -171,6 +203,7 @@ export class JobRunner {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       const exhausted = job.attempts >= job.max_attempts;
+      metricsBundle.jobRuns.add(1, { 'apick.queue': job.queue, 'apick.outcome': exhausted ? 'dead' : 'retry' });
       if (exhausted) {
         await this.#db.query(sql`
           update apick_jobs set state = 'dead', last_error = ${message}, finished_at = now(), locked_by = null, locked_at = null
@@ -188,7 +221,6 @@ export class JobRunner {
         this.#log.debug('job retry scheduled', { jobId: job.id, queue: job.queue, attempts: job.attempts, backoffMs: backoff });
       }
     }
-    return true;
   }
 }
 

@@ -65,8 +65,11 @@ CMSes (studied in depth: Strapi) cannot fix without breaking their ecosystems:
   planner; `x-apick-tenant` header or a `resolveTenant(request)` hook; operator
   scope provisions and oversees tenants. Single-tenant = N=1, invisible.
 - **RBAC** — built-in roles (`operator-admin`, `tenant-admin`, `content-editor`,
-  `content-reader`, `public`) plus custom roles with per-field whitelists and
-  row conditions (`"$me"` = caller). Additive/union semantics.
+  `content-reader`, `public`) plus custom roles with per-field read AND write
+  whitelists and row conditions (`"$me"` = caller). Additive/union semantics.
+- **Auth** — hashed API keys for services/agents, plus bring-your-own-IdP:
+  a `verifyToken` hook maps your JWTs (Auth0/Supabase/Clerk/…) into the same
+  principal + RBAC model. One auth system, cached, revocation-safe.
 - **Webhooks** — signed (`apick-signature`), at-least-once, exponential backoff,
   dead-letter, replay endpoint, per-event patterns (`doc.published:articles`).
 - **Jobs & cron** — durable Postgres-native queue with retries/backoff/dead-letter/
@@ -77,6 +80,10 @@ CMSes (studied in depth: Strapi) cannot fix without breaking their ecosystems:
   cursor (`GET /v1/events?afterSeq=`).
 - **MCP** — stateless streamable-HTTP server at `/mcp`; schema-derived tools;
   least-privilege via the same keys; every mutation attributed in the audit log.
+- **Production posture** — CORS (default-safe for bearer auth), SSRF-guarded
+  webhook targets, built-in retention/pruning, graceful shutdown, liveness +
+  readiness probes, request ids, OpenTelemetry spans/metrics via
+  `@opentelemetry/api` (no-op until you register an SDK).
 - **Portability** — `GET /v1/export` / `POST /v1/import` round-trip losslessly
   (uuid7 ids are portable); plain-SQL escape hatch — it's just Postgres.
 - **Self-description** — live `/openapi.json`, `/llms.txt`, `/llms-full.txt`
@@ -88,8 +95,9 @@ There are no unit-coverage tests. Every promise above has a black-box test that
 boots real instances and talks HTTP/MCP — and fails if the promise breaks:
 private fields stay unfilterable, two replicas never double-fire a cron (real
 Postgres, two live apps), a rename preserves data across restarts, export→import
-is byte-identical, a real MCP SDK client round-trips. See
-[`tests/blackbox/`](tests/blackbox/src) — 14 suites, 72 tests.
+is byte-identical, a real MCP SDK client round-trips, webhook workers refuse to
+reach the private network, retention prunes on schedule. See
+[`tests/blackbox/`](tests/blackbox/src) — 18 suites, 93 tests.
 
 ```bash
 pnpm install && pnpm test        # Docker enables the real-Postgres suites
@@ -116,8 +124,9 @@ pnpm install && pnpm test        # Docker enables the real-Postgres suites
 
 v1 focuses on a small, stable core. Explicitly out (see
 [ADR-0001](docs/decisions/0001-architecture.md)): GraphQL, media pipeline, the
-OAuth-connector framework, no-code automations, schema-per-tenant isolation,
-SSE change-feed transport, i18n fallback chains. The primitives they need
-(event log, jobs, planner-scoped tokens) are already here.
+OAuth-connector framework, deep multi-step durable automations,
+schema-per-tenant isolation, SSE change-feed transport, i18n fallback chains.
+The primitives they need (event log, durable jobs, planner-scoped tokens,
+pluggable auth) are already here.
 
 MIT licensed.
