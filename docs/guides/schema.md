@@ -6,7 +6,7 @@ tables; the only DDL your model can ever cause is an opt-in `CREATE INDEX` at
 migrate time.
 
 ```ts
-import { defineCollection, f } from 'apick';
+import { defineCollection, f } from '@apick/core';
 
 const articles = defineCollection('articles', {
   description: 'Blog articles',
@@ -94,6 +94,6 @@ destructive schema operation in APIck.
 ## TypeScript inference
 
 ```ts
-import type { InferDoc } from 'apick';
+import type { InferDoc } from '@apick/core';
 type Article = InferDoc<typeof articles>; // { title: string; views?: number | null; … }
 ```

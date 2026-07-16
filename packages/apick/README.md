@@ -7,7 +7,7 @@ reliable signed webhooks, durable background jobs and cron, OpenAPI 3.1,
 `llms.txt`, and a first-class MCP server. No admin UI, by design.
 
 ```ts
-import { createApp, defineCollection, f } from 'apick';
+import { createApp, defineCollection, f } from '@apick/core';
 
 const todos = defineCollection('todos', {
   fields: {
@@ -59,7 +59,7 @@ https://github.com/vivmagarwal/apick — plus every running app self-documents a
 ## CLI
 
 ```bash
-npx apick init my-app      # runnable hello world
+npx --package=@apick/core apick init my-app      # runnable hello world
 npx apick migrate --database postgres://…   [--app ./schema.js]
 npx apick status
 ```

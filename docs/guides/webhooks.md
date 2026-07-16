@@ -42,7 +42,7 @@ Headers: `apick-signature`, `apick-event-id`, `apick-delivery-id`,
 `apick-signature: t=<unix-ms>,v1=<hex hmac-sha256(secret, t + "." + rawBody)>`
 
 ```ts
-import { verifyWebhookSignature } from 'apick';
+import { verifyWebhookSignature } from '@apick/core';
 if (!verifyWebhookSignature(secret, rawBody, req.headers['apick-signature'])) {
   return res.status(401).end();
 }

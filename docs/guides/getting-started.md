@@ -3,13 +3,13 @@
 ## Install & run
 
 ```bash
-mkdir my-app && cd my-app && npm init -y && npm i apick
+mkdir my-app && cd my-app && npm init -y && npm i @apick/core
 ```
 
-`server.js` (or use `npx apick init`):
+`server.js` (or use `npx --package=@apick/core apick init`):
 
 ```js
-import { createApp, defineCollection, f } from 'apick';
+import { createApp, defineCollection, f } from '@apick/core';
 
 const todos = defineCollection('todos', {
   fields: {

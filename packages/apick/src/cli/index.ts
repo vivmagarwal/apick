@@ -69,7 +69,7 @@ const HELLO_PKG = `{
   "private": true,
   "type": "module",
   "scripts": { "start": "node server.js" },
-  "dependencies": { "@apick/core": "^0.4.0" }
+  "dependencies": { "@apick/core": "^${VERSION}" }
 }
 `;
 

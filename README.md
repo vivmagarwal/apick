@@ -12,7 +12,7 @@ consumer of its API.**
   built ON core: a schema-driven admin UI, users & sessions, and a
   server-rendered themable site. Its admin is a pure REST client — everything
   a human does in it, an agent can do over `/v1` or `/mcp` with the same
-  token. `npx apick-cms init my-site` scaffolds a site with Drupal's
+  token. `npx --package=@apick/cms apick-cms init my-site` scaffolds a site with Drupal's
   conventions (your `collections/`, `theme/`, `plugins/`) and npm's
   distribution (the framework never lives in your repo).
 
@@ -39,7 +39,7 @@ and an MCP endpoint at `/mcp` — with an embedded Postgres (PGlite), so there i
 nothing to install. Point `database` at `postgres://…` when you deploy.
 
 ```bash
-npx apick init my-app && cd my-app && npm i && npm start   # or copy the snippet above
+npx --package=@apick/core apick init my-app && cd my-app && npm i && npm start   # or copy the snippet above
 ```
 
 ## Why APIck exists

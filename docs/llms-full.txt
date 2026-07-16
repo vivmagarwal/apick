@@ -17,7 +17,7 @@ consumer of its API.**
   built ON core: a schema-driven admin UI, users & sessions, and a
   server-rendered themable site. Its admin is a pure REST client — everything
   a human does in it, an agent can do over `/v1` or `/mcp` with the same
-  token. `npx apick-cms init my-site` scaffolds a site with Drupal's
+  token. `npx --package=@apick/cms apick-cms init my-site` scaffolds a site with Drupal's
   conventions (your `collections/`, `theme/`, `plugins/`) and npm's
   distribution (the framework never lives in your repo).
 
@@ -44,7 +44,7 @@ and an MCP endpoint at `/mcp` — with an embedded Postgres (PGlite), so there i
 nothing to install. Point `database` at `postgres://…` when you deploy.
 
 ```bash
-npx apick init my-app && cd my-app && npm i && npm start   # or copy the snippet above
+npx --package=@apick/core apick init my-app && cd my-app && npm i && npm start   # or copy the snippet above
 ```
 
 ## Why APIck exists
@@ -157,13 +157,13 @@ MIT licensed.
 ## Install & run
 
 ```bash
-mkdir my-app && cd my-app && npm init -y && npm i apick
+mkdir my-app && cd my-app && npm init -y && npm i @apick/core
 ```
 
-`server.js` (or use `npx apick init`):
+`server.js` (or use `npx --package=@apick/core apick init`):
 
 ```js
-import { createApp, defineCollection, f } from 'apick';
+import { createApp, defineCollection, f } from '@apick/core';
 
 const todos = defineCollection('todos', {
   fields: {
@@ -257,7 +257,7 @@ and every running CMS is also an API + MCP server.
 ## Zero to CMS
 
 ```bash
-npx apick-cms init my-site && cd my-site && npm install && npm start
+npx --package=@apick/cms apick-cms init my-site && cd my-site && npm install && npm start
 ```
 
 Open `http://localhost:3000/admin` — the first visit walks you through
@@ -473,7 +473,7 @@ tables; the only DDL your model can ever cause is an opt-in `CREATE INDEX` at
 migrate time.
 
 ```ts
-import { defineCollection, f } from 'apick';
+import { defineCollection, f } from '@apick/core';
 
 const articles = defineCollection('articles', {
   description: 'Blog articles',
@@ -561,7 +561,7 @@ destructive schema operation in APIck.
 ## TypeScript inference
 
 ```ts
-import type { InferDoc } from 'apick';
+import type { InferDoc } from '@apick/core';
 type Article = InferDoc<typeof articles>; // { title: string; views?: number | null; … }
 ```
 
@@ -635,7 +635,7 @@ permission on the collection (a saved query is a convenience, never an
 escalation):
 
 ```ts
-import { defineQuery } from 'apick';
+import { defineQuery } from '@apick/core';
 
 const latest = defineQuery('latest', {
   collection: 'articles',
@@ -908,7 +908,7 @@ Headers: `apick-signature`, `apick-event-id`, `apick-delivery-id`,
 `apick-signature: t=<unix-ms>,v1=<hex hmac-sha256(secret, t + "." + rawBody)>`
 
 ```ts
-import { verifyWebhookSignature } from 'apick';
+import { verifyWebhookSignature } from '@apick/core';
 if (!verifyWebhookSignature(secret, rawBody, req.headers['apick-signature'])) {
   return res.status(401).end();
 }

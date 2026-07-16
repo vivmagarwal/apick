@@ -8,7 +8,7 @@ and every running CMS is also an API + MCP server.
 ## Zero to CMS
 
 ```bash
-npx apick-cms init my-site && cd my-site && npm install && npm start
+npx --package=@apick/cms apick-cms init my-site && cd my-site && npm install && npm start
 ```
 
 Open `http://localhost:3000/admin` — the first visit walks you through

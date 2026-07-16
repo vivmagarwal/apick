@@ -6,7 +6,7 @@ definition generates the admin UI, the REST API, the MCP tools and the
 validation, all from one source.
 
 ```bash
-npx apick-cms init my-site && cd my-site && npm install && npm start
+npx --package=@apick/cms apick-cms init my-site && cd my-site && npm install && npm start
 ```
 
 Open `http://localhost:3000/admin` — the first visit creates your admin

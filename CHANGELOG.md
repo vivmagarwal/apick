@@ -3,6 +3,12 @@
 All notable changes to the APIck packages. Semver applies pre-1.0 as:
 breaking API changes bump the minor.
 
+## @apick/cms 0.2.1 — unreleased
+
+- Docs/scaffolder fixes: `apick-cms init` scaffold pins the CLI's own version
+  (was `^0.1.0`, which never resolved); README/guide use
+  `npx --package=@apick/cms apick-cms init`. No runtime changes.
+
 ## @apick/cms 0.2.0 — unreleased
 
 - **Media library**: drag-and-drop upload UI, browse grid, and a picker built
@@ -38,6 +44,12 @@ Initial release: a full, themable CMS on @apick/core.
 - `apick-cms init` scaffolder: conventional collections/ theme/ plugins/
   layout with the framework only in node_modules.
 - Tested by 9 black-box API tests + 11 real-browser Playwright tests.
+
+## @apick/core 0.5.1 — unreleased
+
+- Docs/scaffolder fixes: README examples import from `@apick/core` (not the
+  stale `apick`); `apick init` scaffold pins the CLI's own version so
+  `npm install` resolves. No runtime changes.
 
 ## @apick/core 0.5.0 — unreleased
 

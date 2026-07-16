@@ -65,7 +65,7 @@ permission on the collection (a saved query is a convenience, never an
 escalation):
 
 ```ts
-import { defineQuery } from 'apick';
+import { defineQuery } from '@apick/core';
 
 const latest = defineQuery('latest', {
   collection: 'articles',

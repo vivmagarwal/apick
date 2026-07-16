@@ -1,6 +1,17 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// The scaffold pins THIS CLI's own version, so `npm install` always resolves.
+const CMS_VERSION: string = (() => {
+  try {
+    const pkgPath = fileURLToPath(new URL('../package.json', import.meta.url));
+    return (JSON.parse(readFileSync(pkgPath, 'utf8')) as { version: string }).version;
+  } catch {
+    return 'latest';
+  }
+})();
 
 /**
  * apick-cms init [dir] — scaffold a site with the conventional layout:
@@ -20,7 +31,7 @@ const FILES: Record<string, string> = {
   "private": true,
   "type": "module",
   "scripts": { "start": "node server.js" },
-  "dependencies": { "@apick/cms": "^0.1.0" }
+  "dependencies": { "@apick/cms": "^${CMS_VERSION}" }
 }
 `,
 
