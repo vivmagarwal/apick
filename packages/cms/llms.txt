@@ -1,23 +1,25 @@
-# APIck (API Construction Kit)
+# @apick/cms v0.2.2
 
-> Two packages: @apick/core (pure-headless, AI-first platform for Node.js +
-> Postgres) and @apick/cms (a full themable CMS built on core). One TypeScript
-> schema definition drives a validated REST API, RBAC, multi-tenancy, versioned
-> documents, signed webhooks, durable jobs/cron, OpenAPI 3.1 and a first-class
-> MCP server. Requires Node >= 22.
+> A full, themable, WordPress-class CMS built on @apick/core: a schema-driven
+> admin UI, users & sessions, a media library, an edodo-write markdown editor,
+> and a server-rendered themable site. Still headless underneath — the admin is
+> a REST client, and every running CMS is also an API + MCP server.
 
-Packages: @apick/core v0.5.2 · @apick/cms v0.2.2.
-Every running app also serves ITS OWN live docs at /llms.txt, /llms-full.txt and
-/openapi.json — generated from that app's actual schema. This file documents the
-framework itself.
+Install: `npm i @apick/cms` (Node >= 22). Scaffold a site:
+`npx --package=@apick/cms apick-cms init my-site`. Repo:
+https://github.com/vivmagarwal/apick
+
+@apick/cms re-exports the @apick/core schema DSL, so a CMS project needs one
+import. These docs are a SUPERSET: the CMS guide plus the full core API (schema,
+queries, RBAC, webhooks, jobs, MCP, deployment) that CMS collections use.
 
 This file is GENERATED from docs/guides by scripts/build-llms.mjs — do not edit by hand.
 It is deterministic, version-stamped, and regenerated on every build (`pnpm llms`).
 
-## Docs
+## Contents (full text in llms-full.txt)
 
-- [Getting started](docs/guides/getting-started.md): install, hello world, document lifecycle, error contract
 - [@apick/cms](docs/guides/cms.md): the full themable CMS on core — admin UI, users, media, themes, plugins
+- [Getting started](docs/guides/getting-started.md): install, hello world, document lifecycle, error contract
 - [Schema & fields](docs/guides/schema.md): field DSL, unique/private/indexed/immutable, lossless renames
 - [Queries](docs/guides/queries.md): filter grammar, bounded reads, populate, saved queries
 - [Auth & RBAC](docs/guides/auth-rbac.md): API keys, BYO-IdP, built-in + custom roles, field whitelists, row conditions
@@ -28,13 +30,3 @@ It is deterministic, version-stamped, and regenerated on every build (`pnpm llms
 - [Deployment](docs/guides/deployment.md): Postgres/Supabase, explicit migrations, N replicas, CORS, OTel
 - [Portability](docs/guides/portability.md): lossless export/import, SQL escape hatch
 - [Extending](docs/guides/extending.md): custom endpoints, jobs-as-automation, stable surface
-- [Architecture decisions](docs/decisions/0001-architecture.md): the full design rationale
-
-## Per-package LLM docs
-
-- @apick/core: packages/apick/llms.txt · packages/apick/llms-full.txt
-- @apick/cms: packages/cms/llms.txt · packages/cms/llms-full.txt
-
-## Optional
-
-- [Full compiled guide](docs/llms-full.txt): all of the above in one file

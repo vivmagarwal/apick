@@ -1,6 +1,6 @@
 {
   "name": "@apick/cms",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "APIck CMS \u2014 a full, themable CMS on top of @apick/core: schema-driven admin UI, users & sessions, server-rendered themable frontend, plugins. WordPress-class, headless-first.",
   "license": "MIT",
   "type": "module",
@@ -17,10 +17,12 @@
   "files": [
     "dist",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "llms.txt",
+    "llms-full.txt"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/build-admin.mjs",
+    "build": "node ../../scripts/build-llms.mjs && tsc -p tsconfig.json && node scripts/build-admin.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p src/admin/ui/tsconfig.json --noEmit"
   },
   "keywords": [

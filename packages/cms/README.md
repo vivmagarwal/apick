@@ -58,6 +58,12 @@ my-site/
 Drupal's conventions, npm's distribution: there is no framework code in your
 repo to fork by accident.
 
+## LLM / agent docs
+
+Ships `llms.txt` (index) and `llms-full.txt` (the CMS guide plus the full core
+API), generated from the guides and stamped with this version — read
+`node_modules/@apick/cms/llms-full.txt`.
+
 ## Docs
 
 Guides, architecture decisions and the black-box + real-browser test suites:

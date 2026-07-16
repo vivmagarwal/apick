@@ -3,6 +3,11 @@
 All notable changes to the APIck packages. Semver applies pre-1.0 as:
 breaking API changes bump the minor.
 
+## @apick/cms 0.2.2 — unreleased
+
+- Ships per-package `llms.txt` + `llms-full.txt` (CMS guide + full core API),
+  generated deterministically and version-stamped. Docs-only.
+
 ## @apick/cms 0.2.1 — unreleased
 
 - Docs/scaffolder fixes: `apick-cms init` scaffold pins the CLI's own version
@@ -44,6 +49,12 @@ Initial release: a full, themable CMS on @apick/core.
 - `apick-cms init` scaffolder: conventional collections/ theme/ plugins/
   layout with the framework only in node_modules.
 - Tested by 9 black-box API tests + 11 real-browser Playwright tests.
+
+## @apick/core 0.5.2 — unreleased
+
+- Ships per-package `llms.txt` + `llms-full.txt` — machine-readable API docs
+  generated deterministically from the guides, version-stamped, regenerated on
+  every build (drift-guarded by `pnpm llms:check`). Docs-only.
 
 ## @apick/core 0.5.1 — unreleased
 

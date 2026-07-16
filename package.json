@@ -6,9 +6,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "pnpm -r --filter apick build",
+    "build": "pnpm -r --filter=\"./packages/*\" build",
     "test": "pnpm build && pnpm --filter @apick/blackbox test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "llms": "node scripts/build-llms.mjs",
+    "llms:check": "node scripts/build-llms.mjs --check"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

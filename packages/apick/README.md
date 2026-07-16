@@ -50,6 +50,18 @@ any Postgres ≥ 14 — including Supabase — and run `npx apick migrate` on de
   can produce unbounded work.
 - Export → import into a fresh install is lossless; ids are portable UUIDv7.
 
+## LLM / agent docs
+
+This package ships machine-readable docs generated from the guides, stamped with
+this exact version:
+
+- `llms.txt` — a concise index
+- `llms-full.txt` — the complete API guide in one file
+
+Point an agent at `node_modules/@apick/core/llms-full.txt`. (Every running app
+also serves live, schema-specific docs at `/llms.txt`, `/llms-full.txt`,
+`/openapi.json`.)
+
 ## Documentation
 
 Full guides, architecture decisions and the test suite:

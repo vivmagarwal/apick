@@ -1,23 +1,24 @@
-# APIck (API Construction Kit)
+# @apick/core v0.5.2
 
-> Two packages: @apick/core (pure-headless, AI-first platform for Node.js +
-> Postgres) and @apick/cms (a full themable CMS built on core). One TypeScript
-> schema definition drives a validated REST API, RBAC, multi-tenancy, versioned
-> documents, signed webhooks, durable jobs/cron, OpenAPI 3.1 and a first-class
-> MCP server. Requires Node >= 22.
+> Pure-headless, AI-first application platform for Node.js + Postgres. One
+> TypeScript schema definition produces a validated REST API, RBAC,
+> multi-tenancy, versioned documents with pointer-publish, reliable signed
+> webhooks, durable jobs/cron, OpenAPI 3.1, and a first-class MCP server.
+> No admin UI by design — developers, apps and AI agents are the users.
 
-Packages: @apick/core v0.5.2 · @apick/cms v0.2.2.
+Install: `npm i @apick/core` (Node >= 22). Embedded Postgres (PGlite) for dev;
+any Postgres >= 14 in production. Repo: https://github.com/vivmagarwal/apick
+
 Every running app also serves ITS OWN live docs at /llms.txt, /llms-full.txt and
 /openapi.json — generated from that app's actual schema. This file documents the
-framework itself.
+@apick/core API itself.
 
 This file is GENERATED from docs/guides by scripts/build-llms.mjs — do not edit by hand.
 It is deterministic, version-stamped, and regenerated on every build (`pnpm llms`).
 
-## Docs
+## Contents (full text in llms-full.txt)
 
 - [Getting started](docs/guides/getting-started.md): install, hello world, document lifecycle, error contract
-- [@apick/cms](docs/guides/cms.md): the full themable CMS on core — admin UI, users, media, themes, plugins
 - [Schema & fields](docs/guides/schema.md): field DSL, unique/private/indexed/immutable, lossless renames
 - [Queries](docs/guides/queries.md): filter grammar, bounded reads, populate, saved queries
 - [Auth & RBAC](docs/guides/auth-rbac.md): API keys, BYO-IdP, built-in + custom roles, field whitelists, row conditions
@@ -28,13 +29,10 @@ It is deterministic, version-stamped, and regenerated on every build (`pnpm llms
 - [Deployment](docs/guides/deployment.md): Postgres/Supabase, explicit migrations, N replicas, CORS, OTel
 - [Portability](docs/guides/portability.md): lossless export/import, SQL escape hatch
 - [Extending](docs/guides/extending.md): custom endpoints, jobs-as-automation, stable surface
-- [Architecture decisions](docs/decisions/0001-architecture.md): the full design rationale
 
-## Per-package LLM docs
+## The full CMS
 
-- @apick/core: packages/apick/llms.txt · packages/apick/llms-full.txt
-- @apick/cms: packages/cms/llms.txt · packages/cms/llms-full.txt
-
-## Optional
-
-- [Full compiled guide](docs/llms-full.txt): all of the above in one file
+Building content sites/apps on top of core? See @apick/cms (`npm i @apick/cms`)
+— a WordPress-class themable CMS with a schema-driven admin UI, users, media and
+plugins, all consuming this same API. Its LLM docs cover the CMS plus the full
+core API below.
