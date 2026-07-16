@@ -1,14 +1,25 @@
 # APIck — API Construction Kit
 
-**A pure-headless, AI-first application platform.** Define your content model in
-TypeScript; get a validated REST API, RBAC, multi-tenancy, versioned documents,
-reliable webhooks, durable background jobs, OpenAPI, `llms.txt` and a
-first-class MCP server — from one definition, in one process, on Postgres.
+Two packages, one idea: **the platform is headless; everything else is a
+consumer of its API.**
 
-No admin UI, by design. Developers, apps and AI agents are the users.
+- **[`@apick/core`](packages/apick)** — a pure-headless, AI-first application
+  platform. Define your content model in TypeScript; get a validated REST API,
+  RBAC, multi-tenancy, versioned documents, reliable webhooks, durable
+  background jobs, OpenAPI, `llms.txt` and a first-class MCP server — from one
+  definition, in one process, on Postgres. No UI, by design.
+- **[`@apick/cms`](packages/cms)** — a full, themable, WordPress-class CMS
+  built ON core: a schema-driven admin UI, users & sessions, and a
+  server-rendered themable site. Its admin is a pure REST client — everything
+  a human does in it, an agent can do over `/v1` or `/mcp` with the same
+  token. `npx apick-cms init my-site` scaffolds a site with Drupal's
+  conventions (your `collections/`, `theme/`, `plugins/`) and npm's
+  distribution (the framework never lives in your repo).
+
+## @apick/core in 30 seconds
 
 ```ts
-import { createApp, defineCollection, f } from 'apick';
+import { createApp, defineCollection, f } from '@apick/core';
 
 const todos = defineCollection('todos', {
   fields: {
@@ -97,7 +108,7 @@ private fields stay unfilterable, two replicas never double-fire a cron (real
 Postgres, two live apps), a rename preserves data across restarts, export→import
 is byte-identical, a real MCP SDK client round-trips, webhook workers refuse to
 reach the private network, retention prunes on schedule. See
-[`tests/blackbox/`](tests/blackbox/src) — 18 suites, 93 tests.
+[`tests/blackbox/`](tests/blackbox/src) — 19 suites, 102 tests — plus 11 real-browser Playwright journeys for the CMS in [`tests/browser/`](tests/browser/src).
 
 ```bash
 pnpm install && pnpm test        # Docker enables the real-Postgres suites
@@ -105,7 +116,7 @@ pnpm install && pnpm test        # Docker enables the real-Postgres suites
 
 ## Documentation
 
-- [Getting started](docs/guides/getting-started.md)
+- [Getting started](docs/guides/getting-started.md) · [**@apick/cms** — the full CMS](docs/guides/cms.md)
 - [Schema & fields](docs/guides/schema.md) · [Queries & saved queries](docs/guides/queries.md)
 - [Auth & RBAC](docs/guides/auth-rbac.md) · [Multi-tenancy](docs/guides/tenancy.md)
 - [Webhooks](docs/guides/webhooks.md) · [Jobs & cron](docs/guides/jobs-cron.md)
@@ -115,9 +126,11 @@ pnpm install && pnpm test        # Docker enables the real-Postgres suites
 
 ## Repository layout
 
-- `packages/apick` — the library (`apick` on npm): kernel, schema, planner, HTTP, MCP, CLI
-- `tests/blackbox` — the outside-in promise suite
-- `examples/hello-world`, `examples/blog` — runnable apps
+- `packages/apick` — `@apick/core`: kernel, schema, planner, HTTP, MCP, CLI
+- `packages/cms` — `@apick/cms`: admin SPA, users/sessions, themes, site, plugins
+- `tests/blackbox` — the outside-in promise suite (102 tests, real Postgres via Docker)
+- `tests/browser` — real-browser Playwright suite for the CMS (11 journeys)
+- `examples/hello-world`, `examples/blog`, `examples/cms-demo` — runnable apps
 - `docs/` — guides, ADRs, llms files
 
 ## Status & non-goals (v1)

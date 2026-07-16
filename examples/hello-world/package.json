@@ -7,6 +7,6 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "apick": "workspace:*"
+    "@apick/core": "workspace:*"
   }
 }

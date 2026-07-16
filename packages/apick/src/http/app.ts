@@ -152,7 +152,7 @@ export function buildHttpApp(core: AppCore): Hono<HonoEnv> {
 
   app.route('/v1/collections', docRoutes());
   app.route('/v1', systemRoutes());
-  app.route('/', metaRoutes());
+  app.route('/', metaRoutes({ rootIndex: core.config.rootIndex }));
   app.route('/mcp', mcpRoutes());
 
   return app;

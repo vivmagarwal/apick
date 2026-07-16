@@ -6,9 +6,13 @@ import type { HonoEnv } from './app.js';
 import { buildLlmsFullTxt, buildLlmsTxt } from './llms.js';
 import { buildOpenApi } from './openapi.js';
 
-export function metaRoutes(): Hono<HonoEnv> {
+export function metaRoutes(options: { rootIndex: boolean }): Hono<HonoEnv> {
   const app = new Hono<HonoEnv>();
 
+  // When the consumer claims "/" (e.g. @apick/cms renders the site there),
+  // the index route must not exist at all — a registered handler would win
+  // over later extend() routes even when it 404s.
+  if (options.rootIndex)
   app.get('/', (c) => {
     const core = c.get('core');
     return c.json({
@@ -48,7 +52,9 @@ export function metaRoutes(): Hono<HonoEnv> {
         key: col.key,
         description: col.description ?? null,
         readSchema: col.compiled.readSchema,
-        ...(writable ? { writeSchema: col.compiled.writeSchema } : {}),
+        // Writers also get the raw field definitions (types, relations, blocks
+        // variants, constraints) — this is what schema-driven UIs consume.
+        ...(writable ? { writeSchema: col.compiled.writeSchema, fields: col.compiled.fields } : {}),
       },
     });
   });

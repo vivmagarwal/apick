@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { ExternalIdentity } from 'apick';
+import type { ExternalIdentity } from '@apick/core';
 import { blogCollections } from './fixtures.js';
 import { startApp, type RunningApp } from './helpers.js';
 

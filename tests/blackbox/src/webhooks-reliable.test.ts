@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { verifyWebhookSignature } from 'apick';
+import { verifyWebhookSignature } from '@apick/core';
 import { blogCollections } from './fixtures.js';
 import { eventually, startApp, startReceiver, type RunningApp } from './helpers.js';
 

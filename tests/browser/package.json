@@ -1,0 +1,17 @@
+{
+  "name": "@apick/browser-tests",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed"
+  },
+  "dependencies": {
+    "@apick/cms": "workspace:*",
+    "@apick/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0"
+  }
+}

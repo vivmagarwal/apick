@@ -37,6 +37,8 @@ export interface DocEnvelope {
   locale: string;
   version: number;
   status: 'draft' | 'published';
+  /** Version currently published, or null (lets UIs show draft/modified/published). */
+  publishedVersion: number | null;
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
@@ -82,6 +84,7 @@ export function toEnvelope(col: CompiledCollection, row: DocRow, status: 'draft'
     locale: row.locale,
     version: status === 'published' ? row.published_version! : row.draft_version,
     status,
+    publishedVersion: row.published_version,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
     publishedAt: row.published_at ? row.published_at.toISOString() : null,

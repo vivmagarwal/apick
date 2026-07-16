@@ -25,6 +25,8 @@ export interface ResolvedConfig {
   maxBodyBytes: number;
   /** Bring-your-own-IdP verifier for non-APIck bearer tokens. */
   verifyToken: VerifyTokenHook | null;
+  /** Whether "/" serves the JSON API index. */
+  rootIndex: boolean;
 }
 
 /** Shared plumbing handed to the HTTP router, MCP server and CLI. */

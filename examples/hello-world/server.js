@@ -1,4 +1,4 @@
-import { createApp, defineCollection, f } from 'apick';
+import { createApp, defineCollection, f } from '@apick/core';
 
 // One collection. That's the whole schema definition — it drives validation,
 // the REST API, OpenAPI, MCP tools and llms.txt all at once.

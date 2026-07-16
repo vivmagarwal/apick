@@ -16,6 +16,39 @@ accurate — it is the re-orientation point for long sessions.
 - [x] **P8 dx** — hello-world + blog examples, CLI (`apick init/migrate/status`), export/import
 - [x] **P9 docs** — README, 11 guides, llms.txt + llms-full.txt (generated via scripts/build-llms.mjs), promise→test matrix
 
+## P10 — @apick/cms (decided 2026-07-16)
+
+Naming pivot: the npm scope is `@apick/*`; the library package renames
+`apick` → `@apick/core` (bin stays `apick`; version 0.4.0 — supersedes the old
+experimental 0.3.x kernel already on npm). New package `@apick/cms`: a full
+WordPress/Drupal-class CMS ON TOP of core. The original "no admin UI" rule is
+resolved as: core = headless forever; the CMS ships the UI as a separate
+package whose admin is a pure consumer of core's REST API (dogfood).
+
+- [x] rename apick → @apick/core everywhere (tests/examples/docs/CLI templates)
+- [x] core additions: code-defined `roles` config; `rootIndex: false`;
+      FieldDef introspection on /schema; `publishedVersion` in envelopes
+- [x] cms auth: cms-users collection (scrypt passwordHash PRIVATE), HMAC
+      session tokens via core's BYO-IdP hook, role mapping admin/editor/viewer,
+      first-run setup, deterministic internal service key
+- [x] cms admin SPA: Preact+htm bundled at build (consumer never builds);
+      schema-driven editor for EVERY field type incl. blocks/relations;
+      publish flow, versions/restore, users/keys/webhooks pages
+- [x] cms site: themable server-rendered frontend (Theme = code: templates +
+      block renderers, html-escaped by default), default theme, pages+posts
+      default model, markdown via marked
+- [x] plugins: CmsPlugin = collections + queries + jobs/crons + routes +
+      adminNav + theme overrides (thin composition over core config)
+- [x] tests: blackbox API suite (auth/escalation/setup) + REAL BROWSER
+      Playwright suite (tests/browser) covering the full editor journeys
+- [x] docs: cms guides (cms.md), ADR-0002, READMEs, llms regen; examples/
+      cms-demo restructured to the conventional layout; `apick-cms init`
+      scaffolder (Drupal conventions, npm distribution). Suites at completion:
+      19 blackbox files / 102 tests + 11 Playwright browser tests + visual
+      screenshot QA of admin and site. Vivek's mid-build architecture check
+      (2026-07-16) confirmed the built shape: core = headless soul, cms =
+      consumer; his cloned-repo idea became the scaffolder convention.
+
 ## Promise → black-box test matrix (every wishlist promise gets a failing-if-broken test)
 
 | Promise | Test |

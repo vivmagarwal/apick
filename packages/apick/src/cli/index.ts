@@ -36,7 +36,7 @@ function arg(args: string[], name: string): string | undefined {
   return i >= 0 ? args[i + 1] : undefined;
 }
 
-const HELLO_SERVER = `import { createApp, defineCollection, f } from 'apick';
+const HELLO_SERVER = `import { createApp, defineCollection, f } from '@apick/core';
 
 const todos = defineCollection('todos', {
   fields: {
@@ -69,7 +69,7 @@ const HELLO_PKG = `{
   "private": true,
   "type": "module",
   "scripts": { "start": "node server.js" },
-  "dependencies": { "apick": "^0.1.0" }
+  "dependencies": { "@apick/core": "^0.4.0" }
 }
 `;
 

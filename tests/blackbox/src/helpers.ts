@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
-import { createApp, silentLogger, type ApickApp, type ApickConfig } from 'apick';
+import { createApp, silentLogger, type ApickApp, type ApickConfig } from '@apick/core';
 
 /**
  * Black-box harness: every test boots a REAL app instance and talks to it over

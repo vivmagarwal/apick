@@ -1,9 +1,33 @@
 # Changelog
 
-All notable changes to the `apick` package. Semver applies from 0.1.0:
-breaking API changes bump the minor pre-1.0.
+All notable changes to the APIck packages. Semver applies pre-1.0 as:
+breaking API changes bump the minor.
 
-## 0.1.0 — unreleased
+## @apick/cms 0.1.0 — unreleased
+
+Initial release: a full, themable CMS on @apick/core.
+
+- Schema-driven admin SPA (pre-bundled Preact): listings, editor for every
+  field type incl. blocks with reordering, draft/modified/published workflow,
+  version history + restore, users/keys/webhooks management.
+- Users & sessions: scrypt passwords in a `private` field, HMAC session
+  tokens over core's BYO-IdP hook, password-change session invalidation,
+  admin/editor/viewer roles with structural escalation closure.
+- Themable server-rendered site: pages + posts model, code-as-theme with
+  child-theme merging, escaped-by-default `html` tag, markdown via marked.
+- Plugins: collections/queries/jobs/crons/routes/adminNav/theme in one unit.
+- `apick-cms init` scaffolder: conventional collections/ theme/ plugins/
+  layout with the framework only in node_modules.
+- Tested by 9 black-box API tests + 11 real-browser Playwright tests.
+
+## @apick/core 0.4.0 — unreleased
+
+Renamed from `apick` to `@apick/core` (supersedes the unrelated experimental
+0.3.x kernel previously published under this name). Additions for consumers
+like @apick/cms: code-defined `roles` config, `rootIndex: false`, FieldDef
+introspection on /schema (writers), `publishedVersion` in document envelopes.
+
+## apick 0.1.0 (now @apick/core)
 
 Initial release.
 

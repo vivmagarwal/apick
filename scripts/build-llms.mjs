@@ -10,6 +10,7 @@ const read = (p) => readFileSync(resolve(root, p), 'utf8');
 
 const GUIDES = [
   'docs/guides/getting-started.md',
+  'docs/guides/cms.md',
   'docs/guides/schema.md',
   'docs/guides/queries.md',
   'docs/guides/auth-rbac.md',
@@ -39,6 +40,7 @@ This file documents the framework itself.
 ## Docs
 
 - [Getting started](docs/guides/getting-started.md): install, hello world, document lifecycle, error contract
+- [@apick/cms](docs/guides/cms.md): the full themable CMS on core — admin UI, users, themes, plugins
 - [Schema & fields](docs/guides/schema.md): field DSL, unique/private/indexed/immutable, lossless renames
 - [Queries](docs/guides/queries.md): filter grammar, bounded reads, populate, saved queries
 - [Auth & RBAC](docs/guides/auth-rbac.md): API keys, built-in + custom roles, field whitelists, row conditions

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { defineCollection, f } from 'apick';
+import { defineCollection, f } from '@apick/core';
 import { blogCollections } from './fixtures.js';
 import { filterQs, startApp, type ApiClient, type RunningApp } from './helpers.js';
 

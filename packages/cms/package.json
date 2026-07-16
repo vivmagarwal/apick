@@ -1,0 +1,47 @@
+{
+  "name": "@apick/cms",
+  "version": "0.1.0",
+  "description": "APIck CMS \u2014 a full, themable CMS on top of @apick/core: schema-driven admin UI, users & sessions, server-rendered themable frontend, plugins. WordPress-class, headless-first.",
+  "license": "MIT",
+  "type": "module",
+  "author": "Vivek M Agarwal",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/build-admin.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p src/admin/ui/tsconfig.json --noEmit"
+  },
+  "keywords": [
+    "cms",
+    "headless-cms",
+    "admin",
+    "wordpress-alternative",
+    "themes",
+    "apick"
+  ],
+  "dependencies": {
+    "@apick/core": "workspace:*",
+    "hono": "^4.12.30",
+    "marked": "^15.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "htm": "^3.1.1",
+    "preact": "^10.24.0"
+  },
+  "bin": {
+    "apick-cms": "./dist/cli.js"
+  }
+}

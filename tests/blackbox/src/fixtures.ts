@@ -1,4 +1,4 @@
-import { defineCollection, defineQuery, f } from 'apick';
+import { defineCollection, defineQuery, f } from '@apick/core';
 
 /** Shared content model used across the promise tests. */
 export function blogCollections() {

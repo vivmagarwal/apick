@@ -1,4 +1,4 @@
-import { createApp, defineCollection, defineQuery, f } from 'apick';
+import { createApp, defineCollection, defineQuery, f } from '@apick/core';
 
 // ---------------------------------------------------------------------------
 // A multi-tenant publishing platform in one file: relations, composable

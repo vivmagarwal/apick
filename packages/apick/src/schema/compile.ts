@@ -239,6 +239,7 @@ export function compileCollection(key: string, options: { description?: string; 
       locale: { type: 'string' },
       version: { type: 'integer' },
       status: { type: 'string', enum: ['draft', 'published'] },
+      publishedVersion: { type: ['integer', 'null'] },
       createdAt: { type: 'string', format: 'date-time' },
       updatedAt: { type: 'string', format: 'date-time' },
       publishedAt: { type: 'string', format: 'date-time' },

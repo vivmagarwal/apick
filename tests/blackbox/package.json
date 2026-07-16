@@ -8,7 +8,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "apick": "workspace:*"
+    "@apick/core": "workspace:*",
+    "@apick/cms": "workspace:*"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.15.0",

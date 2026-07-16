@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp, silentLogger, type ApickApp } from 'apick';
+import { createApp, silentLogger, type ApickApp } from '@apick/core';
 import { blogCollections } from './fixtures.js';
 import { ApiClient, eventually, freshPgDatabase, pgUrl, startReceiver } from './helpers.js';
 

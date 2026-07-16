@@ -2,7 +2,7 @@ import type { Db } from '../kernel/db.js';
 import { uuidv7 } from '../kernel/ids.js';
 import type { Logger } from '../kernel/log.js';
 import { sql } from '../kernel/sql.js';
-import { BUILTIN_ROLES, createApiKey, createTenant, hashToken, type TenantRow } from '../auth/rbac.js';
+import { BUILTIN_ROLES, createApiKey, createTenant, hashToken, type RoleDefinition, type TenantRow } from '../auth/rbac.js';
 import type { Registry } from '../content/registry.js';
 
 /**
@@ -27,7 +27,7 @@ const ROOT_NAME = '__root';
 export async function bootstrap(
   db: Db,
   registry: Registry,
-  config: { defaultTenant?: string; rootKey?: string; logger?: Logger },
+  config: { defaultTenant?: string; rootKey?: string; roles?: RoleDefinition[]; logger?: Logger },
 ): Promise<BootstrapResult> {
   // 1. built-in roles, synced to canonical permissions
   for (const role of BUILTIN_ROLES) {
@@ -59,6 +59,35 @@ export async function bootstrap(
             values (${uuidv7()}, ${roleId}, ${'read'}, ${`doc:${col.key}`}, ${null}, ${null})
           `);
         }
+      }
+    });
+  }
+
+  // 1b. code-defined roles (config.roles): upsert + replace permissions, so
+  // the code is the source of truth — same treatment as built-ins.
+  for (const role of config.roles ?? []) {
+    if (BUILTIN_ROLES.some((b) => b.key === role.key)) {
+      throw new Error(`Role key "${role.key}" is reserved (built-in)`);
+    }
+    await db.transaction(async (tx) => {
+      const { rows } = await tx.query<{ id: string }>(sql`
+        select id from apick_roles where key = ${role.key} and tenant_id is null for update
+      `);
+      let roleId = rows[0]?.id;
+      if (!roleId) {
+        roleId = uuidv7();
+        await tx.query(sql`
+          insert into apick_roles (id, tenant_id, key, name, builtin) values (${roleId}, ${null}, ${role.key}, ${role.name}, false)
+        `);
+      } else {
+        await tx.query(sql`update apick_roles set name = ${role.name} where id = ${roleId}`);
+      }
+      await tx.query(sql`delete from apick_permissions where role_id = ${roleId}`);
+      for (const perm of role.permissions) {
+        await tx.query(sql`
+          insert into apick_permissions (id, role_id, action, resource, fields, condition)
+          values (${uuidv7()}, ${roleId}, ${perm.action}, ${perm.resource}, ${perm.fields ? JSON.stringify(perm.fields) : null}, ${perm.condition ? JSON.stringify(perm.condition) : null})
+        `);
       }
     });
   }

@@ -38,6 +38,13 @@ export interface AccessContext {
   rules: PermissionRule[];
 }
 
+/** Code-defined role, synced at bootstrap (upserted; permissions replaced). */
+export interface RoleDefinition {
+  key: string;
+  name: string;
+  permissions: PermissionRule[];
+}
+
 export const BUILTIN_ROLES: { key: string; name: string; permissions: Omit<PermissionRule, 'condition'>[] }[] = [
   { key: 'operator-admin', name: 'Operator admin', permissions: [{ action: '*', resource: '*', fields: null }] },
   {

@@ -1,7 +1,7 @@
 {
-  "name": "apick",
-  "version": "0.1.0",
-  "description": "APIck \u2014 API Construction Kit. Pure-headless, AI-first application platform: content types, RBAC, REST, webhooks, MCP, durable jobs on Postgres.",
+  "name": "@apick/core",
+  "version": "0.4.0",
+  "description": "APIck core \u2014 pure-headless, AI-first application platform: content types, RBAC, REST, webhooks, MCP, durable jobs on Postgres.",
   "license": "MIT",
   "type": "module",
   "engines": {

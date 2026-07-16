@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createApp, silentLogger } from 'apick';
+import { createApp, silentLogger } from '@apick/core';
 import { blogCollections } from './fixtures.js';
 import { eventually, startApp, type RunningApp } from './helpers.js';
 

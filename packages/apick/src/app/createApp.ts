@@ -7,7 +7,7 @@ import { CronScheduler, type CronDefinition } from '../kernel/cron.js';
 import { enqueueJob, JobRunner, type EnqueueJobInput, type JobRow } from '../kernel/jobs.js';
 import { createLogger, silentLogger, type Logger, type LogLevel } from '../kernel/log.js';
 import { migrate, migrationStatus } from '../kernel/migrate.js';
-import type { TenantRow, VerifyTokenHook } from '../auth/rbac.js';
+import type { RoleDefinition, TenantRow, VerifyTokenHook } from '../auth/rbac.js';
 import {
   createRetentionHandler,
   resolveRetention,
@@ -55,6 +55,10 @@ export interface ApickConfig {
   defaultTenant?: string;
   /** Fixed root API key for reproducible dev/test setups; otherwise generated once and returned. */
   rootKey?: string;
+  /** Code-defined roles, synced at bootstrap (key must not clash with built-ins). */
+  roles?: RoleDefinition[];
+  /** Serve the JSON index at "/" (default true; set false to claim "/" for your own routes). */
+  rootIndex?: boolean;
   logger?: Logger;
   logLevel?: LogLevel;
   /** Run the job worker + cron scheduler in this process (default true). */
@@ -158,6 +162,7 @@ export async function createApp(config: ApickConfig = {}): Promise<ApickApp> {
   const boot = await bootstrap(db, registry, {
     ...(config.defaultTenant !== undefined ? { defaultTenant: config.defaultTenant } : {}),
     ...(config.rootKey !== undefined ? { rootKey: config.rootKey } : {}),
+    ...(config.roles !== undefined ? { roles: config.roles } : {}),
     logger: log,
   });
 
@@ -196,6 +201,7 @@ export async function createApp(config: ApickConfig = {}): Promise<ApickApp> {
     cors: corsConfig,
     maxBodyBytes: config.maxBodyBytes ?? 5 * 1024 * 1024,
     verifyToken: config.auth?.verifyToken ?? null,
+    rootIndex: config.rootIndex ?? true,
   };
 
   const caches = createAuthCaches(config.authCacheTtlMs ?? 5000);
