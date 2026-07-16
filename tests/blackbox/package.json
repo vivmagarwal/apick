@@ -12,6 +12,8 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.15.0",
+    "@types/pg": "^8.15.0",
+    "pg": "^8.16.0",
     "vitest": "^3.2.0"
   }
 }

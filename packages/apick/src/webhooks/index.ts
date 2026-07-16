@@ -52,8 +52,15 @@ export function eventMatches(pattern: string, eventType: string, collection: str
   return typePattern === eventType;
 }
 
+export interface WebhookRetryPolicy {
+  maxAttempts: number;
+  backoffMs: number;
+}
+
+export const DEFAULT_WEBHOOK_RETRY: WebhookRetryPolicy = { maxAttempts: 6, backoffMs: 1000 };
+
 /** Runs inside the write transaction (StoreContext.onEvent). */
-export async function fanoutEvent(tx: Queryable, event: EventRow): Promise<void> {
+export async function fanoutEvent(tx: Queryable, event: EventRow, retry: WebhookRetryPolicy = DEFAULT_WEBHOOK_RETRY): Promise<void> {
   if (!event.tenant_id) return;
   const { rows: hooks } = await tx.query<WebhookRow>(sql`
     select * from apick_webhooks where tenant_id = ${event.tenant_id} and enabled
@@ -74,8 +81,8 @@ export async function fanoutEvent(tx: Queryable, event: EventRow): Promise<void>
       tenantId: event.tenant_id,
       payload: { deliveryId },
       idempotencyKey: `wh:${deliveryId}`,
-      maxAttempts: 6,
-      backoffMs: 1000,
+      maxAttempts: retry.maxAttempts,
+      backoffMs: retry.backoffMs,
     });
   }
 }
@@ -210,7 +217,7 @@ export async function createWebhook(
   return { ...rows[0]!, secret };
 }
 
-export async function replayDelivery(db: Db, tenantId: string, deliveryId: string): Promise<boolean> {
+export async function replayDelivery(db: Db, tenantId: string, deliveryId: string, retry: WebhookRetryPolicy = DEFAULT_WEBHOOK_RETRY): Promise<boolean> {
   return db.transaction(async (tx) => {
     const { rows } = await tx.query<{ id: string; attempts: number }>(sql`
       update apick_deliveries set state = 'pending', last_error = null
@@ -224,8 +231,8 @@ export async function replayDelivery(db: Db, tenantId: string, deliveryId: strin
       tenantId,
       payload: { deliveryId },
       idempotencyKey: `wh:${deliveryId}:replay:${row.attempts}`,
-      maxAttempts: 6,
-      backoffMs: 1000,
+      maxAttempts: retry.maxAttempts,
+      backoffMs: retry.backoffMs,
     });
     return true;
   });

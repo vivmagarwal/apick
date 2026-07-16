@@ -4,7 +4,7 @@ import type { AccessContext, TenantRow } from '../auth/rbac.js';
 import type { Registry } from '../content/registry.js';
 import type { StoreContext } from '../content/store.js';
 import type { SavedQuery } from '../query/saved.js';
-import { fanoutEvent } from '../webhooks/index.js';
+import { fanoutEvent, type WebhookRetryPolicy } from '../webhooks/index.js';
 
 export interface ResolvedConfig {
   defaultLocale: string;
@@ -13,6 +13,7 @@ export interface ResolvedConfig {
   interactionLog: 'off' | 'mutations' | 'all';
   /** Map a request to a tenant slug/id; default reads the x-apick-tenant header. */
   resolveTenant: ((request: Request) => string | null | Promise<string | null>) | null;
+  webhookRetry: WebhookRetryPolicy;
 }
 
 /** Shared plumbing handed to the HTTP router, MCP server and CLI. */
@@ -26,7 +27,7 @@ export interface AppCore {
   version: string;
 }
 
-export function storeContextFor(ctx: AccessContext): StoreContext {
+export function storeContextFor(ctx: AccessContext, core: AppCore): StoreContext {
   return {
     tenantId: ctx.tenantId,
     actor: {
@@ -34,6 +35,6 @@ export function storeContextFor(ctx: AccessContext): StoreContext {
       via: ctx.via,
       ...(ctx.keyId ? { keyId: ctx.keyId } : {}),
     },
-    onEvent: fanoutEvent,
+    onEvent: (tx, event) => fanoutEvent(tx, event, core.config.webhookRetry),
   };
 }

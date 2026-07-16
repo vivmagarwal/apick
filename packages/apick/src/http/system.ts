@@ -313,10 +313,11 @@ export function systemRoutes(): Hono<HonoEnv> {
   });
 
   app.post('/deliveries/:id/replay', async (c) => {
-    const { db } = c.get('core');
+    const core = c.get('core');
+    const { db } = core;
     const ctx = c.get('access');
     assertCan(ctx, 'manage', 'system:webhooks');
-    const ok = await replayDelivery(db, ctx.tenantId, c.req.param('id'));
+    const ok = await replayDelivery(db, ctx.tenantId, c.req.param('id'), core.config.webhookRetry);
     if (!ok) throw errors.notFound('Delivery not found or not dead');
     return c.json({ data: { replayed: true } });
   });
@@ -398,7 +399,7 @@ export function systemRoutes(): Hono<HonoEnv> {
     const body = await jsonBody(c);
     if (!Array.isArray(body['docs'])) throw errors.badRequest('Body must include "docs" array (an apick export)');
     const overwrite = body['mode'] === 'overwrite';
-    const store = storeContextFor(ctx);
+    const store = storeContextFor(ctx, core);
     let imported = 0;
     let skipped = 0;
     for (const raw of body['docs'] as Record<string, unknown>[]) {

@@ -94,7 +94,7 @@ export function docRoutes(): Hono<HonoEnv> {
     }
     const publish = body['publish'] === true;
     if (publish) assertCan(ctx, 'publish', `doc:${collection}`);
-    const doc = await createDoc(core.db, col, storeContextFor(ctx), {
+    const doc = await createDoc(core.db, col, storeContextFor(ctx, core), {
       data: body['data'] as Record<string, unknown>,
       locale: parseLocale(body['locale'] as string | undefined, core.config.defaultLocale),
       ...(typeof body['docId'] === 'string' ? { docId: body['docId'] } : {}),
@@ -130,7 +130,7 @@ export function docRoutes(): Hono<HonoEnv> {
     if (body['patch'] === undefined || typeof body['patch'] !== 'object' || body['patch'] === null || Array.isArray(body['patch'])) {
       throw errors.badRequest('Body must include a "patch" object (RFC 7386 merge patch)');
     }
-    const doc = await patchDoc(core.db, col, storeContextFor(ctx), {
+    const doc = await patchDoc(core.db, col, storeContextFor(ctx, core), {
       docId: c.req.param('docId'),
       patch: body['patch'] as Record<string, unknown>,
       locale: parseLocale(body['locale'] as string | undefined, core.config.defaultLocale),
@@ -151,7 +151,7 @@ export function docRoutes(): Hono<HonoEnv> {
     const result = await deleteDoc(
       core.db,
       col,
-      storeContextFor(ctx),
+      storeContextFor(ctx, core),
       c.req.param('docId'),
       locale ? parseLocale(locale, core.config.defaultLocale) : undefined,
     );
@@ -166,7 +166,7 @@ export function docRoutes(): Hono<HonoEnv> {
     assertCan(ctx, 'publish', `doc:${collection}`);
     const col = core.registry.get(collection).compiled;
     const locale = parseLocale(c.req.query('locale'), core.config.defaultLocale);
-    const doc = await publishDoc(core.db, col, storeContextFor(ctx), c.req.param('docId'), locale);
+    const doc = await publishDoc(core.db, col, storeContextFor(ctx, core), c.req.param('docId'), locale);
     return c.json({ data: doc });
   });
 
@@ -177,7 +177,7 @@ export function docRoutes(): Hono<HonoEnv> {
     assertCan(ctx, 'publish', `doc:${collection}`);
     const col = core.registry.get(collection).compiled;
     const locale = parseLocale(c.req.query('locale'), core.config.defaultLocale);
-    const doc = await unpublishDoc(core.db, col, storeContextFor(ctx), c.req.param('docId'), locale);
+    const doc = await unpublishDoc(core.db, col, storeContextFor(ctx, core), c.req.param('docId'), locale);
     return c.json({ data: doc });
   });
 
@@ -216,7 +216,7 @@ export function docRoutes(): Hono<HonoEnv> {
     const version = Number.parseInt(c.req.param('version'), 10);
     if (!Number.isInteger(version) || version < 1) throw errors.badRequest('version must be a positive integer');
     const locale = parseLocale(c.req.query('locale'), core.config.defaultLocale);
-    const doc = await restoreVersion(core.db, col, storeContextFor(ctx), c.req.param('docId'), version, locale);
+    const doc = await restoreVersion(core.db, col, storeContextFor(ctx, core), c.req.param('docId'), version, locale);
     return c.json({ data: doc });
   });
 

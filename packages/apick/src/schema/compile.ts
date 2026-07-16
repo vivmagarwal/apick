@@ -267,10 +267,30 @@ export function compileCollection(key: string, options: { description?: string; 
     validate: (data: unknown): ValidationIssue[] => {
       if (compiled.Check(data)) return [];
       const issues: ValidationIssue[] = [];
-      for (const err of compiled.Errors(data)) {
-        issues.push({ path: err.path.replaceAll('/', '.').replace(/^\./, ''), message: err.message });
-        if (issues.length >= 20) break;
-      }
+      const seen = new Set<string>();
+      // Optional fields compile to Union([T, Null]); drill into union sub-errors
+      // so issues point at the failing leaf (seo.metaTitle), not the wrapper.
+      const collect = (errs: Iterable<{ path: string; message: string; errors?: Array<Iterable<{ path: string; message: string }>> }>): void => {
+        for (const err of errs) {
+          if (issues.length >= 20) return;
+          let drilled = false;
+          for (const sub of err.errors ?? []) {
+            const subErrors = [...sub].filter((s) => s.message !== 'Expected null');
+            if (subErrors.length > 0) {
+              collect(subErrors as never);
+              drilled = true;
+            }
+          }
+          if (!drilled) {
+            const path = err.path.replaceAll('/', '.').replace(/^\./, '');
+            if (!seen.has(path)) {
+              seen.add(path);
+              issues.push({ path, message: err.message });
+            }
+          }
+        }
+      };
+      collect(compiled.Errors(data) as never);
       return issues;
     },
     writeSchema: JSON.parse(JSON.stringify(writeTb)),

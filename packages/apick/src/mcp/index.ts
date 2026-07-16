@@ -289,7 +289,7 @@ async function callTool(core: AppCore, ctx: AccessContext, name: string, args: A
       if (args['data'] === null || typeof args['data'] !== 'object' || Array.isArray(args['data'])) {
         throw errors.badRequest('Tool argument "data" (object) is required');
       }
-      const doc = await createDoc(core.db, core.registry.get(collection).compiled, storeContextFor(ctx), {
+      const doc = await createDoc(core.db, core.registry.get(collection).compiled, storeContextFor(ctx, core), {
         data: args['data'] as Record<string, unknown>,
         locale,
         publish: args['publish'] === true,
@@ -302,7 +302,7 @@ async function callTool(core: AppCore, ctx: AccessContext, name: string, args: A
       if (args['patch'] === null || typeof args['patch'] !== 'object' || Array.isArray(args['patch'])) {
         throw errors.badRequest('Tool argument "patch" (object) is required');
       }
-      const doc = await patchDoc(core.db, core.registry.get(collection).compiled, storeContextFor(ctx), {
+      const doc = await patchDoc(core.db, core.registry.get(collection).compiled, storeContextFor(ctx, core), {
         docId: argStr(args, 'docId'),
         patch: args['patch'] as Record<string, unknown>,
         locale,
@@ -316,7 +316,7 @@ async function callTool(core: AppCore, ctx: AccessContext, name: string, args: A
       const result = await deleteDoc(
         core.db,
         core.registry.get(collection).compiled,
-        storeContextFor(ctx),
+        storeContextFor(ctx, core),
         argStr(args, 'docId'),
         typeof args['locale'] === 'string' ? (args['locale'] as string) : undefined,
       );
@@ -327,7 +327,7 @@ async function callTool(core: AppCore, ctx: AccessContext, name: string, args: A
       const collection = argStr(args, 'collection');
       assertCan(ctx, 'publish', `doc:${collection}`);
       const fn = name === 'publish_document' ? publishDoc : unpublishDoc;
-      const doc = await fn(core.db, core.registry.get(collection).compiled, storeContextFor(ctx), argStr(args, 'docId'), locale);
+      const doc = await fn(core.db, core.registry.get(collection).compiled, storeContextFor(ctx, core), argStr(args, 'docId'), locale);
       return { data: doc };
     }
     case 'list_versions': {
@@ -348,7 +348,7 @@ async function callTool(core: AppCore, ctx: AccessContext, name: string, args: A
       const collection = argStr(args, 'collection');
       assertCan(ctx, 'update', `doc:${collection}`);
       if (typeof args['version'] !== 'number') throw errors.badRequest('Tool argument "version" (integer) is required');
-      const doc = await restoreVersion(core.db, core.registry.get(collection).compiled, storeContextFor(ctx), argStr(args, 'docId'), args['version'] as number, locale);
+      const doc = await restoreVersion(core.db, core.registry.get(collection).compiled, storeContextFor(ctx, core), argStr(args, 'docId'), args['version'] as number, locale);
       return { data: doc };
     }
     default:

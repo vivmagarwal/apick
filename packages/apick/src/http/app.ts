@@ -54,7 +54,8 @@ export function buildHttpApp(core: AppCore): Hono<HonoEnv> {
 
     const auth = c.req.header('authorization');
     const token = auth?.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : null;
-    const ctx = await resolveAccess(core.db, { token, tenantId: tenant.id, via: 'api' });
+    const via = c.req.path === '/mcp' || c.req.path.startsWith('/mcp/') ? 'mcp' : 'api';
+    const ctx = await resolveAccess(core.db, { token, tenantId: tenant.id, via });
     c.set('access', ctx);
 
     const started = Date.now();
@@ -65,7 +66,8 @@ export function buildHttpApp(core: AppCore): Hono<HonoEnv> {
     // doc events already carry redacted payloads.
     const mode = core.config.interactionLog;
     const isRead = c.req.method === 'GET' || c.req.method === 'HEAD';
-    if (mode === 'off' || (mode === 'mutations' && isRead) || c.req.path === '/health') return;
+    // /mcp logs its own tool-level interaction events with better granularity.
+    if (mode === 'off' || (mode === 'mutations' && isRead) || c.req.path === '/health' || via === 'mcp') return;
     appendEvent(core.db, {
       tenantId: ctx.tenantId,
       type: 'http.request',

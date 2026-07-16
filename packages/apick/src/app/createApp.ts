@@ -10,7 +10,7 @@ import type { TenantRow } from '../auth/rbac.js';
 import { Registry } from '../content/registry.js';
 import type { Collection } from '../schema/collection.js';
 import type { SavedQuery } from '../query/saved.js';
-import { createDeliveryHandler, WEBHOOK_QUEUE } from '../webhooks/index.js';
+import { createDeliveryHandler, DEFAULT_WEBHOOK_RETRY, WEBHOOK_QUEUE } from '../webhooks/index.js';
 import { buildHttpApp, type HonoEnv } from '../http/app.js';
 import { bootstrap } from './bootstrap.js';
 import type { AppCore, ResolvedConfig } from './core.js';
@@ -56,6 +56,8 @@ export interface ApickConfig {
   /** Map a request to a tenant slug/id (e.g. from the Host header). */
   resolveTenant?: (request: Request) => string | null | Promise<string | null>;
   interactionLog?: 'off' | 'mutations' | 'all';
+  /** Webhook delivery retry policy (default: 6 attempts, 1s exponential backoff). */
+  webhookRetry?: { maxAttempts?: number; backoffMs?: number };
   /** Add your own routes on the same Hono app (custom endpoints). */
   extend?: (app: Hono<HonoEnv>, core: AppCore) => void;
 }
@@ -126,6 +128,10 @@ export async function createApp(config: ApickConfig = {}): Promise<ApickApp> {
     defaultTenantSlug: boot.defaultTenant.slug,
     interactionLog: config.interactionLog ?? 'mutations',
     resolveTenant: config.resolveTenant ?? null,
+    webhookRetry: {
+      maxAttempts: config.webhookRetry?.maxAttempts ?? DEFAULT_WEBHOOK_RETRY.maxAttempts,
+      backoffMs: config.webhookRetry?.backoffMs ?? DEFAULT_WEBHOOK_RETRY.backoffMs,
+    },
   };
 
   const core: AppCore = {
