@@ -54,7 +54,8 @@ const app = await createCms({
 });
 
 if (app.rootKey) console.log('Root API key (shown once, save it):', app.rootKey);
-const { url } = await app.listen(3000);
+// dev: port 3000 · PaaS: no-args listen() honors the injected PORT + binds 0.0.0.0
+const { url } = await app.listen(process.env.PORT ? undefined : 3000);
 console.log(\`
   Site   \${url}/
   Admin  \${url}/admin   ← first visit creates your account

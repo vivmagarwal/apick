@@ -1,4 +1,4 @@
-# @apick/core v0.8.0 — complete API guide (generated from docs/guides)
+# @apick/core v0.8.1 — complete API guide (generated from docs/guides)
 
 This file is GENERATED from docs/guides by scripts/build-llms.mjs — do not edit by hand.
 It is deterministic, version-stamped, and regenerated on every build (`pnpm llms`).

@@ -3,6 +3,15 @@
 All notable changes to the APIck packages. Semver applies pre-1.0 as:
 breaking API changes bump the minor.
 
+## @apick/core 0.8.1 · @apick/cms 0.3.1 — 2026-07-17
+
+- Scaffolds (`apick init`, `apick-cms init`) now generate a PORT-aware
+  `listen()` — port 3000 in dev, the platform's injected `PORT` + 0.0.0.0 on
+  a PaaS (the pinned `listen(3000)` ignored PORT and broke first deploys).
+- New guide: **Build a real site** (docs/guides/build-a-real-site.md) — the
+  glopo.info playbook, every command verified literally against the published
+  packages; ships in llms.txt/llms-full.txt.
+
 ## @apick/core 0.8.0 — 2026-07-16
 
 The authoring release (see ADR 0003) — presentation-free primitives that

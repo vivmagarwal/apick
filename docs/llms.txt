@@ -6,7 +6,7 @@
 > documents, signed webhooks, durable jobs/cron, OpenAPI 3.1 and a first-class
 > MCP server. Requires Node >= 22.
 
-Packages: @apick/core v0.8.0 · @apick/cms v0.3.0.
+Packages: @apick/core v0.8.1 · @apick/cms v0.3.1.
 Every running app also serves ITS OWN live docs at /llms.txt, /llms-full.txt and
 /openapi.json — generated from that app's actual schema. This file documents the
 framework itself.
@@ -19,6 +19,7 @@ It is deterministic, version-stamped, and regenerated on every build (`pnpm llms
 - [APIck in one page](docs/guides/apick-in-one-page.md): the whole API compactly — DSL, endpoints, filter grammar, invariants (read first)
 - [Getting started](docs/guides/getting-started.md): install, hello world, document lifecycle, error contract
 - [@apick/cms](docs/guides/cms.md): the full themable CMS on core — admin UI, users, media, themes, plugins
+- [Build a real site](docs/guides/build-a-real-site.md): step-by-step: a real content site from zero to client-ready (the glopo.info playbook)
 - [Schema & fields](docs/guides/schema.md): field DSL, unique/private/indexed/immutable, lossless renames
 - [Queries](docs/guides/queries.md): filter grammar, bounded reads, populate, saved queries
 - [Auth & RBAC](docs/guides/auth-rbac.md): API keys, BYO-IdP, built-in + custom roles, field whitelists, row conditions
